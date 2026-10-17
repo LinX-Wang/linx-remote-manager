@@ -1,4 +1,8 @@
 <div align="center">
+  <p>
+    <a href="README.md"><img src="https://img.shields.io/badge/简体中文-0071e3?style=for-the-badge" alt="简体中文 · 当前语言"></a>
+    <a href="README.en.md"><img src="https://img.shields.io/badge/English-64748b?style=for-the-badge" alt="Switch to English"></a>
+  </p>
   <img src="LinX.png" alt="LinX Remote" width="80">
   <h1>LinX Remote</h1>
   <p><strong>让远程项目，接上你熟悉的模型服务。</strong></p>

@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 import manager
 
-DOCS = ('README.md', 'LICENSE', 'SECURITY.md', 'CHANGELOG.md',
+DOCS = ('README.md', 'README.en.md', 'LICENSE', 'SECURITY.md', 'CHANGELOG.md',
         'settings.example.json', 'VERSION', 'CONTRIBUTING.md')
 
 

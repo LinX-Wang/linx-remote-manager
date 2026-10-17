@@ -1,0 +1,160 @@
+<div align="center">
+  <p>
+    <a href="README.md"><img src="https://img.shields.io/badge/简体中文-64748b?style=for-the-badge" alt="切换到简体中文"></a>
+    <a href="README.en.md"><img src="https://img.shields.io/badge/English-0071e3?style=for-the-badge" alt="English · Current language"></a>
+  </p>
+  <img src="LinX.png" alt="LinX Remote" width="80">
+  <h1>LinX Remote</h1>
+  <p><strong>Connect remote projects to the model services you already use.</strong></p>
+  <p>A provider, model, and SSH tunnel manager for Cindy's remote Codex projects.</p>
+  <p>
+    <a href="https://github.com/LinX-Wang/linx-remote-manager/releases/latest">Download</a> ·
+    <a href="#quick-start">Quick start</a> ·
+    <a href="docs/USER_GUIDE.md">User guide (中文)</a> ·
+    <a href="https://github.com/LinX-Wang/linx-remote-manager/issues">Report an issue</a>
+  </p>
+  <p>
+    <img alt="Python 3.8+" src="https://img.shields.io/badge/Python-3.8%2B-3776AB?logo=python&logoColor=white">
+    <img alt="Windows and macOS clients" src="https://img.shields.io/badge/Client-Windows%20%7C%20macOS-0071e3">
+    <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/License-MIT-18775d"></a>
+  </p>
+</div>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/overview-dark.png">
+  <img src="docs/assets/overview-light.png" alt="LinX Remote provider management: active connection, multiple models, direct APIs, and local tunnels" width="100%">
+</picture>
+
+> All screenshots use fictional demo data. The repository and public packages do not contain the author's server addresses, accounts, API keys, SSH private keys, personal settings, or real conversations. Screenshots show the application's current Chinese interface.
+
+## Why LinX Remote?
+
+Remote projects run on a server, so their model configuration needs to live there too. LinX Remote brings provider selection, model discovery, configuration switching, access to local Sub2API, and remote environment setup into one interface.
+
+Connect your server directly to an API provider, or use a reverse SSH tunnel to reach Sub2API on your computer without giving the local service a public IP address.
+
+This is **an independent third-party project by LinX**, not an official Cindy or OpenAI product.
+
+## Features
+
+| Feature | What it does |
+| --- | --- |
+| Provider management | Add and edit multiple providers; saving does not automatically activate a provider |
+| Model selection | Fetch, search, select multiple models, select all, or add exact model IDs manually |
+| Single-model tests | Choose one model to test; testing is optional before activation |
+| Native menu synchronization | Sync the active provider's selected models to Cindy's remote model catalog |
+| Local service tunnel | Forward a server loopback port to local Sub2API, with background reconnection |
+| Cindy connection discovery | Prefer existing Cindy SSH configurations, with manual connections also supported |
+| Per-user environment | Check gawk and the complete Codex installation; skip tools that already work |
+| Visual updates | Check versions and install on demand, with progress inside the relevant tool card |
+| Download fallback | When the server cannot reach GitHub, try downloading locally and transferring over SSH |
+| Light and dark themes | Switch with the sun/moon button, or follow local time automatically |
+| Computer migration | Shared Windows/macOS core, with a personal migration export |
+
+### Interface preview
+
+**Connections and updates:** reuse Cindy's SSH configuration and prepare tools in the actual login account's home directory. Update progress stays next to its action button.
+
+![Server tools and inline update progress](docs/assets/connection-updates.png)
+
+**Choose the models you need:** fetch, search, and select multiple models, then choose a single model when testing.
+
+![Model selection](docs/assets/model-selection.png)
+
+<details>
+<summary>Small-window and mobile-width layout</summary>
+
+<img src="docs/assets/mobile.png" alt="Responsive layout at a narrow viewport width" width="390">
+
+This is the desktop management page in a narrow viewport, not a standalone mobile app. The management service listens on the current computer's loopback address by default.
+
+</details>
+
+## Quick start
+
+### 1. Download and launch
+
+Visit [Releases](https://github.com/LinX-Wang/linx-remote-manager/releases/latest).
+
+| Client | Recommended method | Requirements |
+| --- | --- | --- |
+| Windows | Download the Windows ZIP, fully extract it, and open the EXE | OpenSSH client; Python is not required |
+| macOS | Download the portable package, fully extract it, and open the `.app` or `.command` launcher | Python 3.10+ recommended; system OpenSSH |
+| From source | Clone the repository and run the commands below | Python 3.8+, OpenSSH, and a modern browser |
+
+```bash
+git clone https://github.com/LinX-Wang/linx-remote-manager.git
+cd linx-remote-manager
+python launch.pyw
+```
+
+On macOS, use `python3` instead of `python` if needed. Runtime code uses only the Python standard library; no `pip install` is needed.
+
+### 2. Choose a server
+
+Configure your server in Cindy's remote connection settings first. Then open **服务器连接 (Server connection) → 从 Cindy 选择服务器 (Choose from Cindy) → 使用并连接 (Use and connect)** in the manager.
+
+You can also enter a host, SSH port, and username manually. The advanced authentication field takes a private key **file path**, not a password or the contents of the key. On first login, verify the host fingerprint and make sure your SSH key or agent is available.
+
+The public version starts without a preconfigured server and will not select or connect to the author's environment.
+
+### 3. Prepare tools and add a provider
+
+Check gawk and Codex under **环境与更新 (Environment and updates)**. Then open **供应商配置 (Provider configuration)**, enter the API base URL and key, fetch and select models, save, and explicitly activate the provider.
+
+- **Direct provider:** the server accesses the upstream API directly, bypassing local Sub2API.
+- **Local Sub2API:** start your local service first, then establish a tunnel on the **本机 Sub2API (Local Sub2API)** page.
+- **API protocol:** the upstream service must support Responses. Services that only support Chat Completions need a separate protocol adapter; this tool does not perform that conversion automatically.
+
+## Two connection paths
+
+```mermaid
+flowchart LR
+  A[LinX Remote interface] -->|SSH management| B[Codex on the server]
+  B -->|Direct Responses API| C[Model service / API gateway]
+  B -->|Server loopback port| T[Reverse SSH tunnel]
+  T --> D[Sub2API on your computer]
+  D --> E[Model services configured in Sub2API]
+```
+
+The tunnel binds to `127.0.0.1` on the server. The default server port is `18765` and the local service port is `8080`; both are configurable. Your computer and local service must stay online while using the tunnel.
+
+## Privacy and data storage
+
+- The public repository starts with blank settings and contains no real server or provider data.
+- Local connection settings are saved in `settings.json`. OpenSSH or your agent uses your SSH private key; the key is not copied into those settings.
+- Provider credentials are saved under the configured Codex HOME on the server, with relevant files restricted to the current account. This is **not an encrypted vault**: that server account can still read its own credentials.
+- The local interface listens only on loopback and its API uses a random session token. Do not expose it directly to the internet.
+- **Export migration package** is a personal backup feature that includes connection settings. **Do not upload a personal migration export as a public release.**
+- Remove keys, private keys, host addresses, and sensitive log content before opening an issue. See [Security (中文)](SECURITY.md).
+
+## Compatibility and limitations
+
+- The Windows client has been tested in actual use. macOS launch and background behavior have undergone code review and simulated checks, but a complete end-to-end regression on a physical Mac is still pending. The `.app` is unsigned and not notarized.
+- The remote worker targets Linux and requires Python 3.8+ and write access to the account's home directory. Automatic gawk setup primarily supports Debian/Ubuntu; other systems may require manual GNU Awk setup.
+- Environment setup does not run `sudo`, replace system `awk`, or modify other users' configurations.
+- The manager reuses Cindy's SSH configuration but establishes a separate SSH connection. First use may require separate host fingerprint confirmation.
+- Projects using the same server account and Codex HOME share configuration. Provider switches and upgrades check whether remote tasks are idle.
+- Cindy updates may change its Codex version, model catalog, or internal session interfaces. Cindy may reinstall its required version over a newer Codex installation. Compatibility with every future version is not guaranteed.
+- Non-GPT models also depend on the upstream service's Responses and tool-calling compatibility. A model appearing in the menu does not mean every tool has been validated with it.
+
+## Development and releases
+
+```bash
+python -m unittest discover -s tests -v
+python tools/audit_public.py
+python tools/build_release.py --source-only
+```
+
+Building the Windows EXE requires PyInstaller. Generating demo screenshots requires Playwright. Neither is a runtime dependency. See [Contributing (中文)](CONTRIBUTING.md).
+
+GitHub Actions provides cross-platform checks and manual or tag-triggered package builds. The public source is maintained separately from the author's personal installation, and release files are collected using an explicit allowlist.
+
+## Related projects
+
+- [Cindy](https://github.com/makecindy/cindy): the remote project host.
+- [OpenAI Codex](https://github.com/openai/codex): the remote coding tool; installation packages come from its official releases.
+- [CC Switch](https://github.com/farion1231/cc-switch): one of the design references for provider configuration management.
+- [Changelog (中文)](CHANGELOG.md) · [User guide (中文)](docs/USER_GUIDE.md) · [MIT License](LICENSE)
+
+<div align="center"><sub>Made by LinX · Keep your remote workspace connected.</sub></div>
