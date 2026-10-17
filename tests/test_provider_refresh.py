@@ -82,4 +82,18 @@ command="preserve"
         self.assertEqual(resumes[0]['model'],'model-b');self.assertEqual(resumes[0]['config'],{'model_reasoning_effort':'high'})
         self.assertEqual(resumes[1]['model'],'model-a');self.assertNotIn('config',resumes[1])
 
+    def test_custom_tool_ids_are_valid_responses_ids_and_outputs_match(self):
+        namespace={'__name__':'linx-compat-test'}
+        exec(w.LINX_COMPAT_PROXY_SOURCE,namespace)
+        payload={'input':[
+            {'type':'custom_tool_call','id':'ctco_01abc','name':'shell','input':'echo ok'},
+            {'type':'custom_tool_call_output','id':'ctout_01abc','call_id':'ctco_01abc','output':'ok'},
+        ]}
+        normalized,_=namespace['normalize_request'](payload)
+        call,output=normalized['input']
+        self.assertTrue(call['id'].startswith('fc_'))
+        self.assertEqual(output['call_id'],call['id'])
+        self.assertEqual(call['type'],'function_call')
+        self.assertEqual(output['type'],'function_call_output')
+
 if __name__=='__main__':unittest.main()
