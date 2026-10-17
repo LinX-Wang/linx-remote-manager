@@ -156,3 +156,5 @@ For Sub2API backup, stop services and consistently back up `.env`, `data`, `post
 If a fresh instance creates a different Sub2API key, edit the tunnel provider's Key in the manager. An old key remains valid only when its data is correctly restored or the original instance still serves it. Direct providers do not depend on local Sub2API and do not need that part of the migration.
 
 See the [user guide (中文)](USER_GUIDE.md) for subsequent operations.
+
+Saving edits to the active provider automatically applies them and refreshes the selected models. New or inactive providers never activate on save. Active tasks block application and leave the previous configuration unchanged; save again after tasks finish. Re-enabling an unchanged active configuration only verifies it; endpoint or catalogue changes still require a remote service reload.

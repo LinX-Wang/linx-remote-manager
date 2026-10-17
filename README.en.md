@@ -39,7 +39,7 @@ This is **an independent third-party project by LinX**, not an official Cindy or
 
 | Feature | What it does |
 | --- | --- |
-| Provider management | Add and edit multiple providers; saving does not automatically activate a provider |
+| Provider management | Add and edit providers; new/inactive providers are saved without switching, while edits to the active provider automatically apply and refresh models |
 | Model selection | Fetch, search, select multiple models, select all, or add exact model IDs manually |
 | Single-model tests | Choose one model to test; testing is optional before activation |
 | Native menu synchronization | Sync the active provider's selected models to Cindy's remote model catalog |
@@ -117,6 +117,8 @@ The public version starts without a preconfigured server and will not select or 
 
 Check gawk and Codex under **环境与更新 (Environment and updates)**. Then open **供应商配置 (Provider configuration)**, enter the API base URL and key, fetch and select models, save, and explicitly activate the provider.
 
+Saving edits to the active provider automatically applies them and refreshes the selected models. New or inactive providers never activate on save. Active tasks block application and leave the previous configuration unchanged; save again after tasks finish. Re-enabling an unchanged active configuration only verifies it; endpoint or catalogue changes still require a remote service reload.
+
 - **Direct provider:** the server accesses the upstream API directly, bypassing local Sub2API.
 - **Local Sub2API:** start your local service first, then establish a tunnel on the **本机 Sub2API (Local Sub2API)** page.
 - **API protocol:** the upstream service must support Responses. Services that only support Chat Completions need a separate protocol adapter; this tool does not perform that conversion automatically.
@@ -182,3 +184,4 @@ GitHub Actions provides cross-platform checks and manual or tag-triggered packag
 - [Changelog (中文)](CHANGELOG.md) · [User guide (中文)](docs/USER_GUIDE.md) · [MIT License](LICENSE)
 
 <div align="center"><sub>Made by LinX · Keep your remote workspace connected.</sub></div>
+

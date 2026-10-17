@@ -263,8 +263,24 @@ def probe_model_catalog(home,catalog,expected,return_rows=False):
                 process.stdin.close();process.stdout.close()
 
 def prepare_model_catalog(home,state,profile):
-    identity=catalog_binary_identity(home);version=codex_version(home)
-    catalog=make_model_catalog(home,profile);models=selected_models(profile)
+    identity=catalog_binary_identity(home);models=selected_models(profile)
+    cache_key=fingerprint({'binary':identity,'models':models,'revision':TOOL_COMPAT_REVISION})
+    cache=state/'catalog-cache'/(cache_key+'.json')
+    try:
+        record=json.loads(cache.read_text())
+        target=state/'catalogs'/(record['hash']+'.json')
+        content=target.read_bytes()
+        rows=json.loads(content)['models']
+        compatibility='functions' if any(row.get('description')=='通过当前供应商使用的自定义 Responses 模型' for row in rows) else 'native'
+        if (record.get('binary')==identity and record.get('models')==models
+                and record.get('compatibility_revision')==TOOL_COMPAT_REVISION
+                and record.get('path')==str(target) and record.get('tool_compatibility')==compatibility
+                and hashlib.sha256(content).hexdigest()==record['hash']
+                and [row['slug'] for row in rows]==models and catalog_binary_identity(home)==identity):
+            return record
+    except (OSError,ValueError,KeyError,TypeError):pass
+    version=codex_version(home)
+    catalog=make_model_catalog(home,profile)
     observed=probe_model_catalog(home,catalog,models)
     if catalog_binary_identity(home)!=identity:raise ValueError('校验期间 Codex 已更新，请重新同步；未修改现有配置')
     content=json.dumps(catalog,ensure_ascii=False,sort_keys=True)
@@ -273,8 +289,10 @@ def prepare_model_catalog(home,state,profile):
     # Content-addressed files keep every backup's referenced catalogue immutable.
     if not target.exists() or target.read_bytes()!=content.encode():private(target,content)
     custom=any(row.get('description')=='通过当前供应商使用的自定义 Responses 模型' for row in catalog['models'])
-    return {'path':str(target),'hash':digest,'version':version,'models':models,'binary':identity,
+    record={'path':str(target),'hash':digest,'version':version,'models':models,'binary':identity,
             'tool_compatibility':'functions' if custom else 'native','compatibility_revision':TOOL_COMPAT_REVISION}
+    private(cache,json.dumps(record,ensure_ascii=False))
+    return record
 
 def catalog_binary_identity(home):
     executable=(home/'bin/codex').resolve();stat=executable.stat()
@@ -462,7 +480,7 @@ def idle_snapshot(home):
         finally:connection.close()
     return snap
 
-def refresh_runtime(home, before, provider, model, eligible,preserve_models=False):
+def refresh_runtime(home, before, provider, model, eligible,preserve_models=False,allowed_models=None):
     if not before['running']: return {'running':False,'verified':False,'note':'配置已保存，远程 Codex 启动时生效'}
     # Recheck immediately before restarting; preserve the existing MCP/proxy environment.
     idle_snapshot(home)
@@ -487,8 +505,10 @@ def refresh_runtime(home, before, provider, model, eligible,preserve_models=Fals
             params={'threadId':t['id'],'modelProvider':provider,'excludeTurns':True}
             if not preserve_models:params['model']=model
             else:
-                if t.get('model'):params['model']=t['model']
-                if t.get('effort'):params['config']={'model_reasoning_effort':t['effort']}
+                retained=t.get('model') and (allowed_models is None or t['model'] in allowed_models)
+                if retained:params['model']=t['model']
+                elif allowed_models is not None:params['model']=model
+                if retained and t.get('effort'):params['config']={'model_reasoning_effort':t['effort']}
             result=c.rpc('thread/resume',params)
             if result.get('modelProvider') != provider: raise ValueError('旧对话未确认切换，不能标为已生效')
             restored.append(t['id'])
@@ -617,15 +637,23 @@ def locked(req, home, state):
         p['model'] = p.get('model') or 'pending-selection'
         p.pop('selected_models', None)
         return {'models': models(validate(p))}
+    candidate=None
+    editing_active=False
     if action == 'save':
-        p = req['profile']
+        p = dict(req['profile'])
         existing = next((v for v in db['profiles'] if v['id'] == p.get('id')), None)
         if not p.get('key') and existing: p['key'] = existing['key']
         validate(p)
         p = {k: p[k] for k in ('id', 'name', 'base_url', 'model', 'key', 'mode', 'selected_models')}
-        db['profiles'] = [v for v in db['profiles'] if v['id'] != p['id']] + [p]
-        save()
-        return {'saved': p['id'], 'note': '已保存；点击启用后才会改变 Codex 配置'}
+        editing_active=p['id']==db.get('active')
+        if not editing_active:
+            db['profiles'] = [v for v in db['profiles'] if v['id'] != p['id']] + [p]
+            save()
+            return {'saved':p['id'],'auto_applied':False,'note':'已保存；当前供应商保持不变','state':info()}
+        # Keep the old profile committed until config, credentials and live catalogue verify.
+        candidate=p
+        action='activate'
+        req=dict(req,id=p['id'])
     if action == 'models': return {'models': models(get(req['id']))}
     if action in ('activate','catalog_sync'):
         sync_only=action=='catalog_sync'
@@ -634,7 +662,18 @@ def locked(req, home, state):
             if not current['config_matches_active']:raise ValueError('当前配置与已保存供应商不一致，请先启用要使用的供应商')
             if current['model_catalog']['status']=='synced':
                 return {'model_catalog':current['model_catalog'],'note':'原生模型列表校验通过，无需重新加载远程服务'}
-        p = validate(dict(get(db['active'] if sync_only else req['id'])))
+        p = validate(dict(candidate or get(db['active'] if sync_only else req['id'])))
+        if not sync_only and p['id']==db.get('active'):
+            current=info()
+            old=get(p['id'])
+            same_route=all(p.get(k)==old.get(k) for k in ('base_url','model','key','selected_models'))
+            if same_route and current['config_matches_active'] and current['runtime_matches_active'] and current['model_catalog']['status']=='synced':
+                if candidate:
+                    db['profiles']=[p if v['id']==p['id'] else v for v in db['profiles']]
+                    db['applied_profile_hash']=fingerprint(p);save()
+                    current=info()
+                return {'saved':p['id'],'active':p['id'],'auto_applied':editing_active,
+                        'unchanged':True,'state':current,'note':'当前配置与模型目录已同步，无需重新加载'}
         before = idle_snapshot(home)
         cfg, auth = home / 'config.toml', home / 'auth.json'
         old_cfg=cfg.read_text();old_auth=auth.read_text() if auth.exists() else None
@@ -659,7 +698,9 @@ def locked(req, home, state):
             if not sync_only:private(auth, json.dumps({'OPENAI_API_KEY': p['key']}))
             private(cfg, output)
             arguments=(home,before,PROVIDER_ID,p['model'],set(aliases+[PROVIDER_ID]))
-            refreshed = refresh_runtime(*arguments,**({'preserve_models':True} if sync_only else {}))
+            options=({'preserve_models':True} if sync_only else
+                     {'preserve_models':True,'allowed_models':selected_models(p)} if editing_active else {})
+            refreshed = refresh_runtime(*arguments,**options)
             if refreshed.get('running') and set(runtime_model_ids(home))!=set(catalogue['models']):
                 raise ValueError('远程服务未返回所选模型目录，本次修改已回退')
         except Exception as apply_error:
@@ -672,8 +713,9 @@ def locked(req, home, state):
                     previous=runtime_snapshot(home)
                     # Restore the same thread IDs, even if the failed apply only resumed some.
                     previous['threads']=before['threads']
+                    previous['saved_threads']=before.get('saved_threads',[])
                     refresh_runtime(home,previous,old_root.get('model_provider','openai'),old_root.get('model',p['model']),set(aliases+[PROVIDER_ID]),
-                                    **({'preserve_models':True} if sync_only else {}))
+                                    **({'preserve_models':True} if sync_only or editing_active else {}))
                 except Exception:
                     raise ValueError('切换未完成，原配置已恢复，但远程服务恢复仍需检查；未标记为已启用')
             raise apply_error
@@ -687,8 +729,10 @@ def locked(req, home, state):
         db['model_catalog']=catalogue
         save()
         return {'active': p['id'], 'model': p['model'], 'backup': str(backup),
+                'saved':p['id'],'auto_applied':editing_active,'state':info(),
                 'runtime': refreshed,'model_catalog':catalogue,
                 'note': ('已同步 '+str(len(catalogue['models']))+' 个模型到远端原生列表；现有供应商保持不变' if sync_only else
+                         '当前供应商已保存并自动同步，所选模型已刷新' if editing_active else
                          '供应商已启用，所选模型已同步到远端原生列表') if refreshed.get('verified') else refreshed['note']}
     if action == 'rollback':
         if not db.get('last_backup'): raise ValueError('没有本工具创建的可回退备份')
