@@ -1,5 +1,1 @@
 blank_issues_enabled: false
-contact_links:
-  - name: "安全与隐私问题 · 私密报告 / Private security report"
-    url: https://github.com/LinX-Wang/linx-remote-manager/security/advisories/new
-    about: "漏洞或数据泄露风险请私下联系维护者。不要在公开 Issue 中发送密码、API Key、私钥或漏洞利用细节。"
