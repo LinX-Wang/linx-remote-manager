@@ -1,6 +1,6 @@
 # 开发与贡献
 
-欢迎通过 Issue 描述问题，或用 Pull Request 提交改进。请先阅读 [安全说明](SECURITY.md)，不要提交个人连接、Key、私钥或迁移包。
+欢迎通过 [故障反馈 / 功能建议表单](https://github.com/LinX-Wang/linx-remote-manager/issues/new/choose)描述问题，或用 Pull Request 提交改进。表单为中文，也欢迎英文填写。请先阅读 [安全说明](SECURITY.md)，不要提交个人连接、Key、私钥或迁移包；安全漏洞请使用其中的私密报告入口。
 
 ## 本地开发
 

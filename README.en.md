@@ -11,7 +11,7 @@
     <a href="https://github.com/LinX-Wang/linx-remote-manager/releases/latest">Download</a> ·
     <a href="#quick-start">Quick start</a> ·
     <a href="docs/USER_GUIDE.md">User guide (中文)</a> ·
-    <a href="https://github.com/LinX-Wang/linx-remote-manager/issues">Report an issue</a>
+    <a href="https://github.com/LinX-Wang/linx-remote-manager/issues/new/choose">Report an issue</a>
   </p>
   <p>
     <img alt="Python 3.8+" src="https://img.shields.io/badge/Python-3.8%2B-3776AB?logo=python&logoColor=white">
@@ -126,7 +126,7 @@ The tunnel binds to `127.0.0.1` on the server. The default server port is `18765
 - Provider credentials are saved under the configured Codex HOME on the server, with relevant files restricted to the current account. This is **not an encrypted vault**: that server account can still read its own credentials.
 - The local interface listens only on loopback and its API uses a random session token. Do not expose it directly to the internet.
 - **Export migration package** is a personal backup feature that includes connection settings. **Do not upload a personal migration export as a public release.**
-- Remove keys, private keys, host addresses, and sensitive log content before opening an issue. See [Security (中文)](SECURITY.md).
+- [Report a bug or request a feature](https://github.com/LinX-Wang/linx-remote-manager/issues/new/choose) using the appropriate form. The forms are in Chinese; answers in English are welcome. Remove keys, private keys, host addresses, and sensitive log content. Use [private vulnerability reporting](https://github.com/LinX-Wang/linx-remote-manager/security/advisories/new) for security issues. See [Security (中文)](SECURITY.md).
 
 ## Compatibility and limitations
 

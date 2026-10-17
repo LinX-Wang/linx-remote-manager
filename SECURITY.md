@@ -16,6 +16,10 @@
 
 ## 报告问题
 
-不要把 API Key、SSH 私钥、认证头、完整会话或可识别服务器的日志放进公开 Issue。对于安全问题，可先创建不含利用细节和敏感数据的联系请求，再协商私下提供详情；若仓库已开启 GitHub 私密漏洞报告，可优先使用该入口。
+普通故障和功能建议请使用 [反馈表单](https://github.com/LinX-Wang/linx-remote-manager/issues/new/choose)。提交后会公开显示，请不要附 API Key、SSH 私钥、认证头、完整会话或可识别服务器的日志。
+
+安全漏洞、认证绕过或可能泄露数据的问题，请使用 [GitHub 私密漏洞报告](https://github.com/LinX-Wang/linx-remote-manager/security/advisories/new)。此入口私下联系仓库维护者，请勿先在公开 Issue 中披露漏洞利用细节。报告可描述影响、复现方式和已脱敏示例，但仍不要发送真实密码、API Key 或私钥。
+
+项目目前没有公布反馈邮箱；请使用上述 GitHub 入口。
 
 如果凭据曾经公开，立即到对应服务撤销并轮换；单纯删除文件或提交不能使旧凭据失效。

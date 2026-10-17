@@ -11,7 +11,7 @@
     <a href="https://github.com/LinX-Wang/linx-remote-manager/releases/latest">下载最新版</a> ·
     <a href="#快速开始">快速开始</a> ·
     <a href="docs/USER_GUIDE.md">使用指南</a> ·
-    <a href="https://github.com/LinX-Wang/linx-remote-manager/issues">反馈问题</a>
+    <a href="https://github.com/LinX-Wang/linx-remote-manager/issues/new/choose">反馈问题</a>
   </p>
   <p>
     <img alt="Python 3.8+" src="https://img.shields.io/badge/Python-3.8%2B-3776AB?logo=python&logoColor=white">
@@ -126,7 +126,7 @@ flowchart LR
 - 供应商凭据保存在服务器指定 Codex HOME 下，相关文件限制为当前账号可读。它们**不是加密保险库**，该服务器账号仍可读取自己的凭据。
 - 本地界面只监听回环地址，API 使用随机会话令牌；不要将其直接暴露到公网。
 - “导出迁移包”是个人使用功能，会包含连接设置。**个人迁移包不能当成公开发行包上传。**
-- 提交 Issue 时请去掉 Key、私钥、主机地址和真实日志中的敏感内容。详见 [安全说明](SECURITY.md)。
+- [反馈问题或提出建议](https://github.com/LinX-Wang/linx-remote-manager/issues/new/choose)时，请选择对应中文表单，并去掉 Key、私钥、主机地址和日志中的敏感内容。漏洞等安全问题请使用 [私密报告](https://github.com/LinX-Wang/linx-remote-manager/security/advisories/new)，详见 [安全说明](SECURITY.md)。
 
 ## 兼容范围与限制
 
