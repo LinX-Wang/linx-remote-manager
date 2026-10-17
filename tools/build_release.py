@@ -43,6 +43,9 @@ def archive(target, names, executable=None):
 
 
 def main():
+    # English Windows runners default to cp1252; release filenames include Chinese.
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding='utf-8')
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--source-only', action='store_true')
     args = parser.parse_args()
