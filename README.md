@@ -1,0 +1,156 @@
+<div align="center">
+  <img src="LinX.png" alt="LinX Remote" width="80">
+  <h1>LinX Remote</h1>
+  <p><strong>让远程项目，接上你熟悉的模型服务。</strong></p>
+  <p>为 Cindy 远程 Codex 项目打造的供应商、模型与 SSH 隧道管理器。</p>
+  <p>
+    <a href="https://github.com/LinX-Wang/linx-remote-manager/releases/latest">下载最新版</a> ·
+    <a href="#快速开始">快速开始</a> ·
+    <a href="docs/USER_GUIDE.md">使用指南</a> ·
+    <a href="https://github.com/LinX-Wang/linx-remote-manager/issues">反馈问题</a>
+  </p>
+  <p>
+    <img alt="Python 3.8+" src="https://img.shields.io/badge/Python-3.8%2B-3776AB?logo=python&logoColor=white">
+    <img alt="Windows and macOS clients" src="https://img.shields.io/badge/Client-Windows%20%7C%20macOS-0071e3">
+    <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/License-MIT-18775d"></a>
+  </p>
+</div>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/overview-dark.png">
+  <img src="docs/assets/overview-light.png" alt="LinX Remote 供应商管理：当前连接、多选模型、直连与本机隧道配置" width="100%">
+</picture>
+
+> 截图全部使用虚构演示数据。仓库与公开安装包不含作者的服务器地址、账号、API Key、SSH 私钥、个人配置或真实会话数据。
+
+## 为什么做这个工具
+
+远程项目运行在服务器上，模型配置也需要落在服务器上。LinX Remote 把选择供应商、获取模型、切换配置、连接本机 Sub2API，以及准备远程运行环境这些操作放进一个界面。
+
+你可以让服务器直连 API 服务，也可以通过反向 SSH 隧道使用电脑上已有的 Sub2API，不必给本机服务配置公网地址。
+
+这是 **LinX 的独立第三方项目**，不是 Cindy 或 OpenAI 官方产品。
+
+## 可以做什么
+
+| 功能 | 你可以怎样使用 |
+| --- | --- |
+| 供应商管理 | 添加、编辑多个供应商；保存后不自动启用，按需切换 |
+| 模型列表 | 获取模型、搜索、多选、全选与手动补充模型 ID |
+| 单模型测试 | 选择一个模型测试连接；启用配置不强制先测试 |
+| 原生菜单同步 | 将当前供应商所选模型同步到 Cindy 远程模型目录 |
+| 本机服务隧道 | 将服务器回环端口转发至本机 Sub2API，后台重连 |
+| 读取 Cindy 连接 | 优先选择 Cindy 使用的 SSH 配置，也支持手动添加 |
+| 个人目录环境 | 检查 gawk 与完整 Codex，已有可用版本则跳过 |
+| 可视化更新 | 检查更新、手动安装；在工具卡片内查看下载与安装进度 |
+| 备用下载 | 服务器无法访问 GitHub 时，尝试本机下载后经 SSH 传输 |
+| 日夜主题 | 太阳/月亮按钮切换，或按本地时间自动切换 |
+| 换电脑使用 | Windows/macOS 共用核心代码，可导出个人迁移包 |
+
+### 界面预览
+
+**连接与更新**：复用 Cindy 的 SSH 配置，按实际登录账号准备个人目录；更新进度紧邻操作按钮。
+
+![服务器连接与就地更新进度](docs/assets/connection-updates.png)
+
+**选择需要的模型**：获取、搜索和多选，测试时再单独选择一个模型。
+
+![模型选择](docs/assets/model-selection.png)
+
+<details>
+<summary>查看小窗口与移动宽度布局</summary>
+
+<img src="docs/assets/mobile.png" alt="窄窗口自适应布局" width="390">
+
+这里展示的是桌面管理页面在窄视口下的布局，并非独立手机 App。管理服务默认仅监听当前电脑的回环地址。
+
+</details>
+
+## 快速开始
+
+### 1. 下载并打开
+
+前往 [Releases](https://github.com/LinX-Wang/linx-remote-manager/releases/latest)。
+
+| 客户端 | 推荐方式 | 前置条件 |
+| --- | --- | --- |
+| Windows | 下载 Windows ZIP，完整解压后双击 EXE | OpenSSH 客户端；无需安装 Python |
+| macOS | 下载跨平台包，完整解压后打开其中的 `.app` 或 `.command` | Python 3.10+ 推荐；系统 OpenSSH |
+| 源码运行 | 克隆后执行下方命令 | Python 3.8+、OpenSSH、现代浏览器 |
+
+```bash
+git clone https://github.com/LinX-Wang/linx-remote-manager.git
+cd linx-remote-manager
+python launch.pyw
+```
+
+macOS 可将命令中的 `python` 换为 `python3`。运行时只使用 Python 标准库，无需 `pip install`。
+
+### 2. 选择服务器
+
+先在 Cindy 的“远程连接”中配置服务器，再打开管理器的 **服务器连接 → 从 Cindy 选择服务器 → 使用并连接**。
+
+也可以手动填写服务器地址、SSH 端口和用户名。高级认证中填写的是密钥文件路径，不是密码，也不是私钥内容。首次登录需确认主机指纹，并确保 SSH Key / Agent 可用。
+
+公开版首次启动不预置服务器，不会替你选中或连接作者的环境。
+
+### 3. 准备环境并添加供应商
+
+在“环境与更新”中检查 gawk 与 Codex，然后回到“供应商配置”添加 API 根地址和 Key，获取并勾选模型，保存后主动启用。
+
+- **直连供应商**：由服务器访问上游 API，不经过本机 Sub2API。
+- **本机 Sub2API**：先启动本机服务，再在“本机 Sub2API”页面建立隧道。
+- **API 协议**：上游需支持 Responses。仅支持 Chat Completions 的服务需要额外协议转换；本工具不自动完成该转换。
+
+## 两种连接方式
+
+```mermaid
+flowchart LR
+  A[LinX Remote 管理界面] -->|SSH 管理| B[服务器上的 Codex]
+  B -->|直连 Responses API| C[模型服务 / 中转站]
+  B -->|服务器回环端口| T[反向 SSH 隧道]
+  T --> D[电脑上的 Sub2API]
+  D --> E[Sub2API 配置的模型服务]
+```
+
+隧道绑定服务器 `127.0.0.1`；默认服务器端口为 `18765`，本机服务端口为 `8080`，均可修改。使用本机隧道期间，电脑和本机服务需要保持在线。
+
+## 隐私与数据位置
+
+- 公开仓库从空白配置开始，不携带真实服务器或供应商数据。
+- 本机 `settings.json` 保存连接设置；SSH 私钥由 OpenSSH / Agent 使用，不复制进配置。
+- 供应商凭据保存在服务器指定 Codex HOME 下，相关文件限制为当前账号可读。它们**不是加密保险库**，该服务器账号仍可读取自己的凭据。
+- 本地界面只监听回环地址，API 使用随机会话令牌；不要将其直接暴露到公网。
+- “导出迁移包”是个人使用功能，会包含连接设置。**个人迁移包不能当成公开发行包上传。**
+- 提交 Issue 时请去掉 Key、私钥、主机地址和真实日志中的敏感内容。详见 [安全说明](SECURITY.md)。
+
+## 兼容范围与限制
+
+- Windows 客户端已实测。macOS 启动与后台逻辑经过代码和模拟检查，尚未完成 Mac 真机完整回归；`.app` 未签名、未公证。
+- 远程工作进程面向 Linux，要求 Python 3.8+ 和个人目录读写权限。gawk 自动准备主要适配 Debian/Ubuntu；其他系统可能需要自行准备 GNU Awk。
+- 环境安装不执行 `sudo`，不替换系统 `awk`，不修改其他用户的配置。
+- Cindy 的 SSH 配置可复用，但管理器建立的是独立 SSH 连接，首次可能需要单独确认主机指纹。
+- 同一服务器账号、同一 Codex HOME 的配置由相关项目共享。供应商切换与升级会检查任务是否空闲。
+- Cindy 更新可能调整 Codex 版本、模型目录或内部会话接口。较新 Codex 可能被 Cindy 重新安装为其指定版本，不能保证任意版本永久兼容。
+- 非 GPT 模型能否完整工作还取决于上游 Responses 与工具调用兼容性；模型 ID 出现在列表中并不代表全部工具均已验证。
+
+## 开发与发布
+
+```bash
+python -m unittest discover -s tests -v
+python tools/audit_public.py
+python tools/build_release.py --source-only
+```
+
+构建 Windows EXE 需额外安装 PyInstaller。生成 README 演示截图需 Playwright；它们都不是运行时依赖。详见 [开发指南](CONTRIBUTING.md)。
+
+GitHub Actions 提供跨平台基础检查和手动/标签触发的发行包构建。公开版与作者个人安装目录分离，所有发布文件都通过白名单收集。
+
+## 项目相关
+
+- [Cindy](https://github.com/makecindy/cindy)：远程项目宿主。
+- [OpenAI Codex](https://github.com/openai/codex)：远程编码工具；安装包从官方发布页获取。
+- [CC Switch](https://github.com/farion1231/cc-switch)：供应商配置管理设计参考之一。
+- [更新记录](CHANGELOG.md) · [使用指南](docs/USER_GUIDE.md) · [MIT License](LICENSE)
+
+<div align="center"><sub>由 LinX 打造 · Keep your remote workspace connected.</sub></div>

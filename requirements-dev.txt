@@ -1,0 +1,3 @@
+# Optional developer dependencies; runtime uses only the standard library.
+pyinstaller==6.22.3
+playwright>=1.49,<2

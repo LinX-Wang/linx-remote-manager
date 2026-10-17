@@ -1,0 +1,9 @@
+#!/bin/bash
+cd "$(dirname "$0")/../../.." || exit 1
+for candidate in /Library/Frameworks/Python.framework/Versions/Current/bin/python3 /opt/homebrew/bin/python3 /usr/local/bin/python3; do
+  if [ -x "$candidate" ] && "$candidate" -c 'import sys; assert sys.version_info >= (3,8)' >/dev/null 2>&1; then
+    exec "$candidate" "$PWD/launch.pyw" --background
+  fi
+done
+/usr/bin/osascript -e 'display dialog "未找到 Python 3。请安装 python.org 的 Python 3.10 或更新版本后重试。" with title "LinX 远程模型管理" buttons {"好"} default button "好"'
+exit 1

@@ -1,0 +1,15 @@
+* text=auto
+*.py text eol=lf
+*.pyw text eol=lf
+*.md text eol=lf
+*.html text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.command text eol=lf
+*.cmd text eol=crlf
+# WSH launcher is UTF-16LE; preserve its bytes on every platform.
+*.vbs binary
+*/Contents/MacOS/launch text eol=lf
+*.png binary
+*.ico binary
+*.icns binary
