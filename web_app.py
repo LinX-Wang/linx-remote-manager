@@ -290,6 +290,9 @@ def operation(data):
         return {'reopen':REOPEN}
     if op == 'bootstrap': return {'settings':s, 'tunnel':core.tunnel_status(s), 'platform':sys.platform,'environment':core.environment_status(),'cindy_connections':core.cindy_connections()}
     if op == 'cindy_connections': return core.cindy_connections()
+    if op == 'connection_detect':
+        draft={k:data.get('settings',s).get(k,core.DEFAULT[k]) for k in core.DEFAULT}
+        return core.detect_connection(draft,s)
     if op == 'environment_start': return core.start_environment(s)
     if op == 'environment_status':
         job=core.environment_status()
@@ -333,7 +336,13 @@ def operation(data):
         new={k:data['settings'].get(k,core.DEFAULT[k]) for k in core.DEFAULT}
         if new['connection_source']=='cindy':
             new=core.cindy_selection(new,new['cindy_host'] or new['alias'])
-        if not new['home'] or any(new.get(k)!=s.get(k) for k in ('host','alias','user','port')):
+        detection=None
+        if data.get('auto_detect'):
+            detection=core.detect_connection(new,s)
+            if detection['directory']['status']=='choose' or detection['tunnel']['status'] in ('choose','conflict'):
+                return {'settings':s,'detection':detection,'needs_selection':True}
+            new=detection['settings']
+        elif not new['home'] or any(new.get(k)!=s.get(k) for k in ('host','alias','user','port')):
             resolved=core.detect_remote_home(new);new['home']=resolved['home'];new['user']=resolved['user']
         for k in ('port','remote_port','local_port'):
             try:new[k]=int(new[k])
@@ -343,7 +352,7 @@ def operation(data):
         if not new['home'].startswith('/'):raise ValueError('远程 Codex 目录需要使用服务器上的绝对路径')
         if any(new[k]!=s[k] for k in ('alias','host','user','port','identity','home','remote_port','local_port')) and core.tunnel_status(s).get('fresh'):raise ValueError('请先到“本机 Sub2API”停止旧隧道，再修改连接设置')
         with LOCK:core.write_settings(new)
-        return {'settings':new}
+        return {'settings':new,'detection':detection}
     if op == 'export':
         fd,path=tempfile.mkstemp(suffix='.zip');os.close(fd)
         try:

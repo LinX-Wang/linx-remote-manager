@@ -45,6 +45,7 @@ This is **an independent third-party project by LinX**, not an official Cindy or
 | Native menu synchronization | Sync the active provider's selected models to Cindy's remote model catalog |
 | Local service tunnel | Forward a server loopback port to local Sub2API, with background reconnection |
 | Cindy connection discovery | Prefer existing Cindy SSH configurations, with manual connections also supported |
+| Automatic discovery | Check Codex installations, server port availability and local Sub2API on connect, with manual overrides |
 | Per-user environment | Check gawk and the complete Codex installation; skip tools that already work |
 | Visual updates | Check versions and install on demand, with progress inside the relevant tool card |
 | Download fallback | When the server cannot reach GitHub, try downloading locally and transferring over SSH |
@@ -56,6 +57,10 @@ This is **an independent third-party project by LinX**, not an official Cindy or
 **Connections and updates:** reuse Cindy's SSH configuration and prepare tools in the actual login account's home directory. Update progress stays next to its action button.
 
 ![Server tools and inline update progress](docs/assets/connection-updates.png)
+
+**Automatic discovery**: check paths and ports on connect, choose among instances and preserve existing tunnels.
+
+![Connection discovery](docs/assets/connection-discovery.png)
 
 **Choose the models you need:** fetch, search, and select multiple models, then choose a single model when testing.
 

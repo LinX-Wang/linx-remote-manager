@@ -45,6 +45,17 @@ Cindy's existing local provider settings are not automatically copied to server-
 
 **For a direct API provider**, you can now add the base URL and key, select models, save, and activate. Skip local Sub2API deployment.
 
+### Automatic discovery
+
+Connecting automatically checks the Codex directory, server tunnel port and local Sub2API port. Use **重新检测 (Detect again)** to preview results first.
+
+- Codex: checks the supplied directory and common Cindy locations under the actual login account. Root uses root's home. Choose when multiple installations are found; custom locations remain editable. A missing installation produces a suggested per-user location, without installing anything during discovery.
+- Server port: reuses ports referenced by existing providers. For a new connection, occupied ports trigger a bounded search for a free alternative. Ports already referenced by providers are retained with a warning if an old computer or another connection still owns the listener. Discovery never stops connections or silently rewrites provider addresses. Availability is a snapshot; SSH checks binding again when creating the tunnel.
+- Local service: reads running Sub2API Docker port mappings and checks health. Non-Docker services require matching page identification as well. Only the supplied port, discovered mappings and a few common ports are checked. Choose among multiple instances; enter custom deployments manually if unrecognized. Direct providers do not require local Sub2API.
+- Migration: select the server from Cindy on the new computer and connect to rediscover that computer's local service. SSH authentication and local Sub2API deployment must still be prepared. Migrated values are checked too. Existing background workers keep their ports; stop the old tunnel before changing them.
+
+Preview detection does not save settings. **使用并连接 (Use and connect)** detects again before saving. Detection failures or an unresolved Codex directory selection leave previous connection settings unchanged.
+
 ## 3. Deploy local Sub2API — tunnel path only
 
 ### 3.1 Prepare Docker Desktop

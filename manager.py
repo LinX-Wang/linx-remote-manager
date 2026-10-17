@@ -18,7 +18,7 @@ HIDDEN = {'creationflags': subprocess.CREATE_NO_WINDOW} if os.name == 'nt' else 
 ENV_LOCK = threading.Lock()
 ENV_JOB = None
 UPDATES_JOB = None
-PACKAGE_FILES = ('download_bridge.py', 'cindy_connections.py', 'remote_environment.py', 'manager.py', 'remote_manager.py', 'web_app.py', 'manager_ui.html', 'launch.pyw', '启动管理器.vbs', '启动管理器.cmd', '诊断启动.cmd', '启动管理器.command', '使用说明.md', 'requirements.txt', 'LinX.svg', 'LinX.png', 'LinX.ico', 'LinX.icns', 'LinX 远程模型管理.app/Contents/Info.plist', 'LinX 远程模型管理.app/Contents/MacOS/launch', 'LinX 远程模型管理.app/Contents/Resources/LinX.icns')
+PACKAGE_FILES = ('connection_detection.py', 'download_bridge.py', 'cindy_connections.py', 'remote_environment.py', 'manager.py', 'remote_manager.py', 'web_app.py', 'manager_ui.html', 'launch.pyw', '启动管理器.vbs', '启动管理器.cmd', '诊断启动.cmd', '启动管理器.command', '使用说明.md', 'requirements.txt', 'LinX.svg', 'LinX.png', 'LinX.ico', 'LinX.icns', 'LinX 远程模型管理.app/Contents/Info.plist', 'LinX 远程模型管理.app/Contents/MacOS/launch', 'LinX 远程模型管理.app/Contents/Resources/LinX.icns')
 
 def export_package(s, target):
     # Mark Unix permissions explicitly: Windows-built ZIPs must preserve the Mac launcher executable bit.
@@ -69,6 +69,10 @@ def cindy_selection(s,alias):
     found=next((h for h in cindy_connections()['hosts'] if h['id']==alias),None)
     if not found:raise ValueError('Cindy 中的这台服务器已移除或改名，请刷新服务器列表后重新选择')
     return dict(s,connection_source='cindy',cindy_host=alias,alias=alias,host='',identity='',user=found['user'] or s.get('user',''),port=found['port'])
+
+def detect_connection(s,previous=None):
+    from connection_detection import detect
+    return detect(s,read_settings() if previous is None else previous,sys.modules[__name__])
 
 def detect_remote_home(s):
     cmd,dest=ssh_base(s)
