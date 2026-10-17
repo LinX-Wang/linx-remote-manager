@@ -72,6 +72,19 @@
 
 ## 快速开始
 
+### 0. 先准备哪些东西？
+
+| 准备项 | 是否需要 | 做到什么程度 |
+| --- | --- | --- |
+| Cindy | 使用 Cindy 远程项目时需要 | 安装后，在「远程连接」中保存服务器并确认能 SSH 登录 |
+| 本机 OpenSSH 客户端 | 两种连接方式都需要 | 在 PowerShell 执行 `ssh -V` 能看到版本 |
+| 可访问的 Linux 服务器 | 两种连接方式都需要 | 有可登录的账号、个人目录写权限，以及 Python 3.8+；自动下载 Codex 还需 curl、tar |
+| 服务器 gawk / Codex | 运行远程项目需要 | 可由管理器「一键检查并准备」安装至个人目录；已有可用版本则跳过 |
+| 本机 Sub2API | **仅本机隧道方式需要** | Docker Desktop 等运行环境已就绪，Sub2API 可登录、上游账号已配置，并已创建可用 API Key |
+| 直连服务的地址和 Key | **仅直连方式需要** | 服务器可访问、支持 Responses；不需要部署本机 Sub2API 或 Docker |
+
+从零开始、还没有 Cindy 连接或 Sub2API？请先阅读 **[新电脑与前置部署指南](docs/SETUP.zh-CN.md)**，包含 Windows 部署命令、登录验证、API Key 创建和换机顺序。
+
 ### 1. 下载并打开
 
 前往 [Releases](https://github.com/LinX-Wang/linx-remote-manager/releases/latest)。
@@ -81,6 +94,8 @@
 | Windows | 下载 Windows ZIP，完整解压后双击 EXE | OpenSSH 客户端；无需安装 Python |
 | macOS | 下载跨平台包，完整解压后打开其中的 `.app` 或 `.command` | Python 3.10+ 推荐；系统 OpenSSH |
 | 源码运行 | 克隆后执行下方命令 | Python 3.8+、OpenSSH、现代浏览器 |
+
+Windows 推荐下载 `LinX-Remote-<版本>-windows.zip`，解压后进入 `LinX-Remote` 文件夹，运行 **`LinX 远程模型管理.exe`**。下载页单独的 `LinX-Remote.exe` 也是可用入口；它与 ZIP 内程序用途相同。GitHub 的「Code → Download ZIP」是源码包，不是带 EXE 的 Windows 发行包。
 
 ```bash
 git clone https://github.com/LinX-Wang/linx-remote-manager.git
@@ -105,6 +120,15 @@ macOS 可将命令中的 `python` 换为 `python3`。运行时只使用 Python �
 - **直连供应商**：由服务器访问上游 API，不经过本机 Sub2API。
 - **本机 Sub2API**：先启动本机服务，再在“本机 Sub2API”页面建立隧道。
 - **API 协议**：上游需支持 Responses。仅支持 Chat Completions 的服务需要额外协议转换；本工具不自动完成该转换。
+
+### 4. 换一台 Windows 电脑
+
+1. 从 Releases 下载 Windows ZIP 并完整解压，安装 Cindy，确认本机 OpenSSH 可用。
+2. 在新电脑 Cindy 中配置服务器 SSH 登录；旧电脑的私钥、Agent 和信任记录不会自动复制。
+3. 打开管理器，连接**同一服务器账号和 Codex HOME**，即可重新读取服务器上保存的供应商与模型；API Key 不需要重新输入。
+4. 如果使用直连供应商，至此可继续使用；如果使用本机 Sub2API，还需在新电脑部署或恢复 Sub2API，确认本机服务可用后重新建立隧道。
+
+管理器下载包不包含 Sub2API、Docker、数据库或你的供应商凭据。迁移管理器不等于迁移 Sub2API 的账号、分组、Key 和数据库；详见 [换机说明](docs/SETUP.zh-CN.md#换电脑时分别迁移什么)。
 
 ## 两种连接方式
 

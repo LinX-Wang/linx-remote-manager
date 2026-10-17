@@ -72,6 +72,19 @@ This is the desktop management page in a narrow viewport, not a standalone mobil
 
 ## Quick start
 
+### 0. Prerequisites
+
+| Item | When needed | Ready when |
+| --- | --- | --- |
+| Cindy | When using Cindy remote projects | Installed, with the server saved in remote connection settings and SSH login working |
+| Local OpenSSH client | Both connection paths | `ssh -V` prints a version in your terminal |
+| Reachable Linux server | Both connection paths | Your account can log in and write to its home directory; Python 3.8+ is available, plus curl and tar for automatic Codex downloads |
+| Remote gawk / Codex | Remote project execution | Use the manager's environment preparation action to install per-user tools, or reuse working installations |
+| Local Sub2API | **Local tunnel path only** | Docker Desktop or another supported runtime is ready, Sub2API is accessible, upstream accounts are configured, and an API key has been created |
+| Direct API URL and key | **Direct path only** | The API supports Responses and is reachable from the server; no local Sub2API or Docker is needed |
+
+Starting from a new computer? Read the **[setup and migration guide](docs/SETUP.en.md)** for Windows deployment commands, Cindy connection setup, API key creation, and migration order.
+
 ### 1. Download and launch
 
 Visit [Releases](https://github.com/LinX-Wang/linx-remote-manager/releases/latest).
@@ -81,6 +94,8 @@ Visit [Releases](https://github.com/LinX-Wang/linx-remote-manager/releases/lates
 | Windows | Download the Windows ZIP, fully extract it, and open the EXE | OpenSSH client; Python is not required |
 | macOS | Download the portable package, fully extract it, and open the `.app` or `.command` launcher | Python 3.10+ recommended; system OpenSSH |
 | From source | Clone the repository and run the commands below | Python 3.8+, OpenSSH, and a modern browser |
+
+On Windows, download `LinX-Remote-<version>-windows.zip`, fully extract it, open the `LinX-Remote` folder, and run **`LinX 远程模型管理.exe`**. The separate `LinX-Remote.exe` release asset serves the same purpose. GitHub's **Code → Download ZIP** downloads source code, not the Windows package with an EXE.
 
 ```bash
 git clone https://github.com/LinX-Wang/linx-remote-manager.git
@@ -105,6 +120,15 @@ Check gawk and Codex under **环境与更新 (Environment and updates)**. Then o
 - **Direct provider:** the server accesses the upstream API directly, bypassing local Sub2API.
 - **Local Sub2API:** start your local service first, then establish a tunnel on the **本机 Sub2API (Local Sub2API)** page.
 - **API protocol:** the upstream service must support Responses. Services that only support Chat Completions need a separate protocol adapter; this tool does not perform that conversion automatically.
+
+### 4. Moving to another Windows computer
+
+1. Download and extract the Windows release ZIP, install Cindy, and confirm that local OpenSSH is available.
+2. Configure SSH login in Cindy on the new computer. Your old private key, agent state, and trusted host records are not copied automatically.
+3. Connect the manager to the **same server account and Codex HOME** to read existing providers and selected models. Their API keys do not need to be entered again.
+4. Direct providers are then ready to use. For local Sub2API, deploy or restore Sub2API on the new computer, check the local service, and establish a new tunnel.
+
+The manager's download does not include Sub2API, Docker, databases, or personal provider credentials. Moving the manager does not migrate Sub2API accounts, groups, keys, or data. See [migration details](docs/SETUP.en.md#what-to-migrate-between-computers).
 
 ## Two connection paths
 

@@ -1,5 +1,7 @@
 # 使用指南
 
+还没有部署 Sub2API 或配置 Cindy 服务器？先看 [新电脑与前置部署指南](SETUP.zh-CN.md)。直连供应商无需部署 Sub2API；使用本机隧道时才需要本机服务。
+
 ## 第一次打开
 
 Windows 用户下载 Release 中的 Windows ZIP，完整解压到可写目录，再打开「LinX 远程模型管理.exe」。不要在压缩包预览中直接运行。源码版运行 `python launch.pyw`；macOS 推荐 Python 3.10+，运行 `python3 launch.pyw` 或包内启动入口。Mac 应用尚未签名、公证或经过完整真机验证。
