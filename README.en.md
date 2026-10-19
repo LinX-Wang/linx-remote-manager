@@ -60,6 +60,10 @@ This is **an independent third-party project by LinX**, not an official Cindy or
 
 ![Server tools and inline update progress](docs/assets/connection-updates.png)
 
+**Server monitoring:** use the section rail to move between GPU, system processes, and disk space. It scrolls horizontally on narrow screens, and GPU users and PIDs line up clearly.
+
+![Server monitoring and section navigation](docs/assets/server-monitor.png)
+
 **Automatic discovery**: check paths and ports on connect, choose among instances and preserve existing tunnels.
 
 ![Connection discovery](docs/assets/connection-discovery.png)

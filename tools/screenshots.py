@@ -1,5 +1,6 @@
 """Reproducible screenshots with fictional data and zero external requests."""
 import argparse
+import json
 from pathlib import Path
 import sys
 
@@ -22,6 +23,29 @@ UPDATES = dict(state='done', items=[
     dict(name='Codex', installed='codex-cli 0.159.2', available='0.163.0', update=True),
     dict(name='gawk', installed='GNU Awk 5.3.1', available='5.3.1', update=False),
 ])
+MONITOR = dict(
+    current_user='developer', cpu_cores=80, load=[3.21, 5.42, 7.11], collected_at=1792419000,
+    memory=dict(total=262144, used=176000, available=86000),
+    gpus=[
+        dict(index=0, name='NVIDIA RTX 6000 Ada', temperature=58, utilization=74,
+             memory_used=24576, memory_total=49152, processes=[
+                 dict(user='developer', pid=240186), dict(user='worker-a', pid=240412),
+                 dict(user='worker-b', pid=240598)]),
+        dict(index=1, name='NVIDIA RTX 6000 Ada', temperature=55, utilization=39,
+             memory_used=18432, memory_total=49152, processes=[
+                 dict(user='developer', pid=240722), dict(user='worker-c', pid=240831)]),
+    ],
+    processes=[
+        dict(user='developer', pid=240186, cpu=38.2, memory=4.1, command='python', args='video_inference_worker.py'),
+        dict(user='worker-a', pid=240412, cpu=24.7, memory=2.8, command='python', args='inference_worker.py'),
+        dict(user='worker-b', pid=240598, cpu=18.4, memory=2.2, command='python', args='batch_worker.py'),
+        dict(user='root', pid=1842, cpu=3.1, memory=0.2, command='nvidia-smi', args='--query-gpu=utilization.gpu'),
+    ],
+    disks=[
+        dict(mount='/', size_kb=204800000, used_kb=91200000, available_kb=113600000, percent=45),
+        dict(mount='/disk2', size_kb=2048000000, used_kb=1210000000, available_kb=838000000, percent=59),
+    ],
+)
 
 
 def main():
@@ -55,6 +79,8 @@ def main():
                                            'menu_visible_count':len(MODELS), 'can_sync':True})
             elif op == 'cindy_connections':
                 data = HOSTS
+            elif op == 'monitor_status':
+                data = MONITOR
             elif op in ('updates_check', 'updates_status'):
                 if empty:
                     raise AssertionError('First run attempted update check')
@@ -86,13 +112,23 @@ def main():
             page.screenshot(path=str(assets/('overview-'+mode+'.png')), full_page=True)
         page.evaluate("appearanceMode='light';applyAppearance('light');S.page='connection';render()")
         page.evaluate("S.environment={tool:'Codex',state:'running',events:[{phase:'download',transfer:true,message:'演示：正在传输已校验的官方包',downloaded_bytes:96*1048576,total_bytes:160*1048576}]};renderEnvironment()")
-        page.evaluate("document.querySelector('.topbar').style.visibility='hidden'")
-        page.locator('.server-tools').screenshot(path=str(assets/'connection-updates.png'))
-        page.evaluate("document.querySelector('.topbar').style.visibility=''")
+        page.screenshot(path=str(assets/'connection-updates.png'), full_page=True)
+        page.evaluate('S.monitor=' + json.dumps(MONITOR, ensure_ascii=False) + ";S.page='monitor';render()")
+        page.wait_for_timeout(300)
+        page.screenshot(path=str(assets/'server-monitor.png'), full_page=True)
+        page.locator('.section-rail button').nth(1).click()
+        page.wait_for_timeout(250)
+        assert page.locator('#monitor-processes h2').is_visible()
+        assert page.locator('#monitor-processes').evaluate('(e)=>e.getBoundingClientRect().top >= 0')
+        page.locator('.section-rail button').first.click()
+        page.wait_for_timeout(250)
+        assert page.evaluate('scrollY < 2')
         page.evaluate("S.page='providers';render();openWizard(S.profiles[0]);S.models=" + repr(MODELS) + ';S.stage=2;drawWizard()')
         page.locator('.modal').screenshot(path=str(assets/'model-selection.png'))
         page.evaluate('closeWizard()')
+        page.evaluate('S.monitor=' + json.dumps(MONITOR, ensure_ascii=False) + ";S.page='monitor';render()")
         page.set_viewport_size({'width':390, 'height':844})
+        assert page.locator('.section-rail').evaluate("e=>getComputedStyle(e).overflowX==='auto'")
         page.screenshot(path=str(assets/'mobile.png'), full_page=True)
         for width in (320, 390, 768, 1024, 1440, 1920):
             page.set_viewport_size({'width':width, 'height':900})
@@ -108,7 +144,7 @@ def main():
         assert 'list' not in calls and 'updates_check' not in calls
         assert not errors, errors
         browser.close()
-    print('Five fictional screenshots generated; 24 layouts and isolated first-run behavior passed.')
+    print('Six fictional screenshots generated; desktop and narrow-screen section navigation, 24 layouts and isolated first-run behavior passed.')
 
 
 if __name__ == '__main__':

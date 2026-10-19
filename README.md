@@ -60,6 +60,10 @@
 
 ![服务器连接与就地更新进度](docs/assets/connection-updates.png)
 
+**服务器监控**：右侧分区导航可在 GPU、系统进程和磁盘空间间跳转，窄屏下可横向滑动；GPU 使用者与 PID 按行排列。
+
+![服务器监控与分区导航](docs/assets/server-monitor.png)
+
 **自动检测**：连接时核验目录与端口；多个实例可选择，现有隧道保持不变。
 
 ![Connection discovery](docs/assets/connection-discovery.png)
