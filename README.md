@@ -102,7 +102,7 @@
 | macOS | 下载跨平台包，完整解压后打开其中的 `.app` 或 `.command` | Python 3.10+ 推荐；系统 OpenSSH |
 | 源码运行 | 克隆后执行下方命令 | Python 3.8+、OpenSSH、现代浏览器 |
 
-Windows 推荐下载 `LinX-Remote-<版本>-windows.zip`，完整解压后进入 `LinX-Remote` 文件夹，运行 **`LinX Remote.exe`**。若发行页提供独立 EXE，也使用同名的 `LinX Remote.exe`。GitHub 的「Code → Download ZIP」是源码包，不是带 EXE 的 Windows 发行包。
+Windows 推荐下载 `LinX-Remote-<版本>-windows.zip`，完整解压后进入 `LinX-Remote` 文件夹，运行 **`LinX Remote.exe`**。发行页的独立 EXE 附件名为 `LinX.Remote.exe`（GitHub 会将文件名中的空格规范为点号）；ZIP 内仍是 `LinX Remote.exe`。GitHub 的「Code → Download ZIP」是源码包，不是带 EXE 的 Windows 发行包。
 
 ```bash
 git clone https://github.com/LinX-Wang/linx-remote-manager.git

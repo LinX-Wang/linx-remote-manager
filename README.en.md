@@ -102,7 +102,7 @@ Visit [Releases](https://github.com/LinX-Wang/linx-remote-manager/releases/lates
 | macOS | Download the portable package, fully extract it, and open the `.app` or `.command` launcher | Python 3.10+ recommended; system OpenSSH |
 | From source | Clone the repository and run the commands below | Python 3.8+, OpenSSH, and a modern browser |
 
-On Windows, download `LinX-Remote-<version>-windows.zip`, fully extract it, open the `LinX-Remote` folder, and run **`LinX Remote.exe`**. If the release also provides a standalone executable, it is named `LinX Remote.exe` as well. GitHub's **Code → Download ZIP** downloads source code, not the Windows package with an EXE.
+On Windows, download `LinX-Remote-<version>-windows.zip`, fully extract it, open the `LinX-Remote` folder, and run **`LinX Remote.exe`**. The standalone release asset is named `LinX.Remote.exe` because GitHub normalizes spaces in asset names; the ZIP still contains `LinX Remote.exe`. GitHub's **Code → Download ZIP** downloads source code, not the Windows package with an EXE.
 
 ```bash
 git clone https://github.com/LinX-Wang/linx-remote-manager.git
