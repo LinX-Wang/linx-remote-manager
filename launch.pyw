@@ -11,17 +11,17 @@ def windows_shortcuts():
     executable=Path(sys.executable).resolve()
     quote=lambda value:"'"+str(value).replace("'","''")+"'"
     script="$ErrorActionPreference='Stop';$shell=New-Object -ComObject WScript.Shell;"
-    script+="$targets=@((Join-Path ([Environment]::GetFolderPath('Desktop')) 'LinX 远程模型管理.lnk'),"+quote(executable.parent/'LinX 远程模型管理.lnk')+");"
-    script+="foreach($target in $targets){$link=$shell.CreateShortcut($target);$link.TargetPath="+quote(executable)+";$link.WorkingDirectory="+quote(executable.parent)+";$link.IconLocation="+quote(str(executable)+',0')+";$link.Description='LinX · 远程模型与 SSH 隧道管理';$link.WindowStyle=7;$link.Save()}"
+    script+="$targets=@((Join-Path ([Environment]::GetFolderPath('Desktop')) 'LinX Remote.lnk'),"+quote(executable.parent/'LinX Remote.lnk')+");"
+    script+="foreach($target in $targets){$link=$shell.CreateShortcut($target);$link.TargetPath="+quote(executable)+";$link.WorkingDirectory="+quote(executable.parent)+";$link.IconLocation="+quote(str(executable)+',0')+";$link.Description='LinX Remote';$link.WindowStyle=7;$link.Save()}"
     subprocess.run(['powershell.exe','-NoProfile','-NonInteractive','-WindowStyle','Hidden','-EncodedCommand',base64.b64encode(script.encode('utf-16le')).decode()],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,creationflags=subprocess.CREATE_NO_WINDOW,timeout=15)
 
 def report(message):
     if os.name=='nt':
         import ctypes
-        ctypes.windll.user32.MessageBoxW(None,message,'LinX 远程模型管理 · 启动失败',16)
+        ctypes.windll.user32.MessageBoxW(None,message,'LinX Remote · 启动失败',16)
     elif sys.platform=='darwin':
         import json
-        script='display dialog '+json.dumps(message,ensure_ascii=False)+' with title "LinX 远程模型管理" buttons {"好"} default button "好"'
+        script='display dialog '+json.dumps(message,ensure_ascii=False)+' with title "LinX Remote" buttons {"好"} default button "好"'
         subprocess.run(['/usr/bin/osascript','-e',script],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
 
 if __name__=='__main__':
@@ -44,11 +44,11 @@ if __name__=='__main__':
             try:
                 os.chdir(ROOT)
                 import manager
-                try:
-                    if '--create-shortcuts' in sys.argv:windows_shortcuts()
+                try:windows_shortcuts()
                 except (OSError,subprocess.SubprocessError):pass
                 manager.gui()
             except Exception:
                 traceback.print_exc()
                 report('管理器未能启动。\n错误已保存在：\n'+str(LOG)+'\n请查看日志后重试，或将错误信息发给助手。')
                 sys.exit(1)
+

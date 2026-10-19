@@ -169,3 +169,6 @@ If a fresh instance creates a different Sub2API key, edit the tunnel provider's 
 See the [user guide (中文)](USER_GUIDE.md) for subsequent operations.
 
 Saving edits to the active provider automatically applies them and refreshes the selected models. New or inactive providers never activate on save. Active tasks block application and leave the previous configuration unchanged; save again after tasks finish. Re-enabling an unchanged active configuration only verifies it; endpoint or catalogue changes still require a remote service reload.
+
+
+

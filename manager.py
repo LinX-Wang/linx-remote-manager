@@ -1,12 +1,12 @@
 """Portable Chinese UI for remote Cindy Codex providers and reverse SSH."""
-import argparse, base64, json, os, queue, re, shlex, shutil, socket, subprocess, sys, threading, time, uuid, zipfile
+import argparse, base64, json, os, queue, re, shlex, shutil, socket, subprocess, sys, tempfile, threading, time, uuid, zipfile
 from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 FROZEN = bool(getattr(sys, 'frozen', False))
 APP_DIR = Path(sys.executable).resolve().parent if FROZEN else ROOT
 SETTINGS = APP_DIR / 'settings.json'
-WINDOWS_APP = 'LinX 远程模型管理.exe'
-DEFAULT = {'alias': '', 'host': '', 'user': '', 'port': 22, 'identity': '', 'home': '', 'remote_port': 18765, 'local_port': 8080, 'connection_source': 'cindy', 'cindy_host': ''}
+WINDOWS_APP = 'LinX Remote.exe'
+DEFAULT = {'alias': '', 'host': '', 'user': '', 'port': 22, 'identity': '', 'auth_method': 'agent', 'home': '', 'remote_port': 18765, 'local_port': 8080, 'connection_source': 'cindy', 'cindy_host': ''}
 
 def state_root(platform=None):
     platform = platform or sys.platform
@@ -16,9 +16,10 @@ def state_root(platform=None):
 STATE = state_root()
 HIDDEN = {'creationflags': subprocess.CREATE_NO_WINDOW} if os.name == 'nt' else {}
 ENV_LOCK = threading.Lock()
+SSH_PASSWORDS = {}
 ENV_JOB = None
 UPDATES_JOB = None
-PACKAGE_FILES = ('connection_detection.py', 'download_bridge.py', 'cindy_connections.py', 'remote_environment.py', 'manager.py', 'remote_manager.py', 'web_app.py', 'manager_ui.html', 'launch.pyw', '启动管理器.vbs', '启动管理器.cmd', '诊断启动.cmd', '启动管理器.command', '使用说明.md', 'requirements.txt', 'LinX.svg', 'LinX.png', 'LinX.ico', 'LinX.icns', 'LinX 远程模型管理.app/Contents/Info.plist', 'LinX 远程模型管理.app/Contents/MacOS/launch', 'LinX 远程模型管理.app/Contents/Resources/LinX.icns')
+PACKAGE_FILES = ('connection_detection.py', 'download_bridge.py', 'cindy_connections.py', 'remote_environment.py', 'server_monitor.py', 'manager.py', 'remote_manager.py', 'web_app.py', 'manager_ui.html', 'launch.pyw', '启动管理器.vbs', '启动管理器.cmd', '诊断启动.cmd', '启动管理器.command', '使用说明.md', 'requirements.txt', 'LinX.svg', 'LinX.png', 'LinX.ico', 'LinX.icns', 'LinX 远程模型管理.app/Contents/Info.plist', 'LinX 远程模型管理.app/Contents/MacOS/launch', 'LinX 远程模型管理.app/Contents/Resources/LinX.icns')
 
 def export_package(s, target):
     # Mark Unix permissions explicitly: Windows-built ZIPs must preserve the Mac launcher executable bit.
@@ -68,7 +69,49 @@ def cindy_connections():
 def cindy_selection(s,alias):
     found=next((h for h in cindy_connections()['hosts'] if h['id']==alias),None)
     if not found:raise ValueError('Cindy 中的这台服务器已移除或改名，请刷新服务器列表后重新选择')
-    return dict(s,connection_source='cindy',cindy_host=alias,alias=alias,host='',identity='',user=found['user'] or s.get('user',''),port=found['port'])
+    return dict(s,connection_source='cindy',cindy_host=alias,alias=alias,host='',identity='',auth_method='agent',user=found['user'] or s.get('user',''),port=found['port'])
+
+def ssh_key(s):
+    return '|'.join(str(s.get(k,'') or '') for k in ('connection_source','alias','host','user','port','identity'))
+
+def set_ssh_password(s,password):
+    key=ssh_key(s)
+    if password:SSH_PASSWORDS[key]=str(password)
+    elif s.get('auth_method')!='password':SSH_PASSWORDS.pop(key,None)
+
+def ssh_auth_environment(s):
+    if s.get('auth_method')!='password':return None,None
+    password=SSH_PASSWORDS.get(ssh_key(s)) or os.environ.get('LINX_REMOTE_SSH_PASSWORD')
+    if not password:raise ValueError('请输入本次运行使用的 SSH 账号密码；密码不会保存到设置或迁移包')
+    STATE.mkdir(parents=True,exist_ok=True)
+    suffix='.cmd' if os.name=='nt' else '.sh'
+    fd,name=tempfile.mkstemp(prefix='ssh-askpass-',suffix=suffix,dir=STATE)
+    path=Path(name)
+    try:
+        with os.fdopen(fd,'w',encoding='utf-8',newline='') as f:
+            f.write('@echo off\r\npowershell -NoProfile -Command "[Console]::Write($env:LINX_REMOTE_SSH_PASSWORD)"\r\n' if os.name=='nt' else "#!/bin/sh\nexec printf '%s' \"$LINX_REMOTE_SSH_PASSWORD\"\n")
+        if os.name!='nt':path.chmod(0o700)
+        env=dict(os.environ,SSH_ASKPASS=str(path),SSH_ASKPASS_REQUIRE='force',DISPLAY='1',LINX_REMOTE_SSH_PASSWORD=password)
+        return env,path
+    except Exception:
+        path.unlink(missing_ok=True);raise
+
+def ssh_run(s,args,**kwargs):
+    env,path=ssh_auth_environment(s)
+    if env is not None:
+        merged=dict(os.environ);merged.update(kwargs.get('env',{}));merged.update(env);kwargs['env']=merged
+    try:return subprocess.run(args,**kwargs)
+    finally:
+        if path:path.unlink(missing_ok=True)
+
+def ssh_popen(s,args,**kwargs):
+    env,path=ssh_auth_environment(s)
+    if env is not None:
+        merged=dict(os.environ);merged.update(kwargs.get('env',{}));merged.update(env);kwargs['env']=merged
+    try:return subprocess.Popen(args,**kwargs),path
+    except Exception:
+        if path:path.unlink(missing_ok=True)
+        raise
 
 def detect_connection(s,previous=None):
     from connection_detection import detect
@@ -77,7 +120,7 @@ def detect_connection(s,previous=None):
 def detect_remote_home(s):
     cmd,dest=ssh_base(s)
     script="import json,os,pwd;from pathlib import Path;a=pwd.getpwuid(os.geteuid());print(json.dumps({'home':str(Path(a.pw_dir).resolve()/'.xdt-server/v1/codex-home'),'user':a.pw_name}))"
-    try:r=subprocess.run(cmd+[dest,'python3 -c '+shlex.quote(script)],stdout=subprocess.PIPE,stderr=subprocess.PIPE,encoding='utf-8',errors='replace',timeout=25,**HIDDEN)
+    try:r=ssh_run(s,cmd+[dest,'python3 -c '+shlex.quote(script)],stdout=subprocess.PIPE,stderr=subprocess.PIPE,encoding='utf-8',errors='replace',timeout=25,**HIDDEN)
     except subprocess.TimeoutExpired:raise ValueError('服务器连接超时，未修改原连接；请先在 Cindy 中确认服务器可登录后重试')
     if r.returncode:raise ValueError('无法复用此服务器的 SSH 登录，未修改原连接。请先用“打开 SSH 登录终端”确认主机指纹，并解锁密钥或加载 SSH Agent。')
     try:
@@ -94,7 +137,8 @@ def ssh_base(s, batch=True):
         hint = '请安装 Windows 可选功能 OpenSSH 客户端' if os.name == 'nt' else 'macOS 通常自带 /usr/bin/ssh，请检查系统与 PATH'
         raise ValueError('找不到 OpenSSH 客户端；' + hint)
     cmd = [exe, '-o', 'ConnectTimeout=12', '-o', 'ServerAliveInterval=20', '-o', 'ServerAliveCountMax=3']
-    if batch: cmd += ['-o', 'BatchMode=yes']
+    if batch and s.get('auth_method')!='password': cmd += ['-o', 'BatchMode=yes']
+    if batch and s.get('auth_method')=='password':cmd += ['-o','PreferredAuthentications=password','-o','PubkeyAuthentication=no','-o','NumberOfPasswordPrompts=1','-o','StrictHostKeyChecking=accept-new']
     if s.get('host'):
         host, user = s['host'].strip(), s['user'].strip()
         if not re.fullmatch(r'[A-Za-z0-9_.:-]+', host) or host.startswith('-'): raise ValueError('服务器地址格式无效')
@@ -117,7 +161,7 @@ def remote(s, action, **data):
     cmd += [dest, 'python3 -c ' + shlex.quote(script)]
     request = dict(data, action=action, home=s['home'])
     try:
-        r = subprocess.run(cmd, input=worker + chr(10) + json.dumps(request), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        r = ssh_run(s,cmd, input=worker + chr(10) + json.dumps(request), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                            encoding='utf-8', errors='replace', timeout=110, **HIDDEN)
     except subprocess.TimeoutExpired: raise ValueError('SSH 操作超过 110 秒，请检查网络和服务器状态')
     if r.returncode:
@@ -152,7 +196,7 @@ def start_environment(s,update=None):
                 request.update(update,action='install_update',runtime_source=base64.b64encode(runtime.encode()).decode('ascii'))
             for attempt in range(2):
                 fallback=None
-                proc=subprocess.Popen(cmd+[dest,'python3 -u -c '+shlex.quote(script)],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,encoding='utf-8',errors='replace',**HIDDEN)
+                proc,askpass=ssh_popen(s,cmd+[dest,'python3 -u -c '+shlex.quote(script)],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,encoding='utf-8',errors='replace',**HIDDEN)
                 threading.Thread(target=lambda p=proc:p.stderr.read(),daemon=True).start()
                 proc.stdin.write(source+'\n'+json.dumps(request)+'\n');proc.stdin.close()
                 timer=threading.Timer(1300,proc.kill);timer.daemon=True;timer.start()
@@ -168,7 +212,8 @@ def start_environment(s,update=None):
                         job['events'].append(event);job['events']=job['events'][-60:]
                         if event.get('done'):job['result']=event.get('result');job['state']='done'
                         if event.get('failed'):job['error']=event['message'];job['state']='failed'
-                proc.wait(timeout=10);timer.cancel();timer=None
+                proc.wait(timeout=10);timer.cancel();timer=None;askpass and askpass.unlink(missing_ok=True)
+                if askpass:askpass.unlink(missing_ok=True)
                 if fallback:
                     from download_bridge import bridge
                     bridge(fallback,STATE,cmd+[dest],HIDDEN,progress)
@@ -214,7 +259,7 @@ def start_updates(s,force=False):
             cmd,dest=ssh_base(s)
             source=base64.b64encode((ROOT/'remote_environment.py').read_bytes()).decode('ascii')
             script="import base64,sys;exec(compile(base64.b64decode(sys.stdin.readline()),'<linx-update-check>','exec'))"
-            r=subprocess.run(cmd+[dest,'python3 -u -c '+shlex.quote(script)],input=source+'\n'+json.dumps({'home':s['home'],'action':'updates'})+'\n',stdout=subprocess.PIPE,stderr=subprocess.PIPE,encoding='utf-8',errors='replace',timeout=65,**HIDDEN)
+            r=ssh_run(s,cmd+[dest,'python3 -u -c '+shlex.quote(script)],input=source+'\n'+json.dumps({'home':s['home'],'action':'updates'})+'\n',stdout=subprocess.PIPE,stderr=subprocess.PIPE,encoding='utf-8',errors='replace',timeout=65,**HIDDEN)
             messages=[]
             for line in r.stdout.splitlines():
                 try:messages.append(json.loads(line))
@@ -269,12 +314,13 @@ def tunnel_worker(settings_path):
             cmd += ['-o', 'ExitOnForwardFailure=yes', '-o', 'LogLevel=ERROR', '-N', '-T', '-R',
                     '127.0.0.1:%d:127.0.0.1:%d' % (int(s['remote_port']), int(s['local_port'])), dest]
             with open(d / 'ssh.log', 'w', encoding='utf-8') as log:
-                child = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=log, **HIDDEN)
+                child,askpass = ssh_popen(s,cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=log, **HIDDEN)
                 started = time.time()
                 while child.poll() is None and not stop.exists():
                     state_write(d, {'pid':os.getpid(), 'ssh_pid':child.pid,
                                     'state':'SSH 运行中（请用检查隧道验证转发）' if time.time()-started > 3 else '正在连接'})
                     time.sleep(1)
+                if askpass:askpass.unlink(missing_ok=True)
                 if stop.exists(): break
                 state_write(d, {'pid':os.getpid(), 'state':'连接断开，5 秒后重连', 'error':(d/'ssh.log').read_text(encoding='utf-8',errors='replace')[-1600:]})
                 for _ in range(5):
@@ -286,6 +332,7 @@ def tunnel_worker(settings_path):
             child.terminate()
             try: child.wait(timeout=5)
             except subprocess.TimeoutExpired: child.kill(); child.wait()
+        if 'askpass' in locals() and askpass:askpass.unlink(missing_ok=True)
         state_write(d, dict({'state':'已停止'}, **({'error':fatal} if fatal else {}))); lock.close()
 
 def start_tunnel(s):
@@ -300,6 +347,7 @@ def start_tunnel(s):
     if os.name == 'nt' and (Path(python).parent/'pythonw.exe').exists(): python=str(Path(python).parent/'pythonw.exe')
     command = [sys.executable, '--tunnel-worker', str(snapshot)] if FROZEN else [python, str(ROOT/'manager.py'), '--tunnel-worker', str(snapshot)]
     environment = dict(os.environ)
+    if s.get('auth_method')=='password':environment['LINX_REMOTE_SSH_PASSWORD']=SSH_PASSWORDS.get(ssh_key(s),'')
     if FROZEN: environment['PYINSTALLER_RESET_ENVIRONMENT'] = '1'
     subprocess.Popen(command, env=environment,
                      stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,

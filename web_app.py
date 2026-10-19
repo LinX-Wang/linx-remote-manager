@@ -1,5 +1,5 @@
 """Loopback-only UI. No dependencies, no public listener, no credential request logging."""
-import base64, json, os, secrets, subprocess, sys, tempfile, threading, time, urllib.parse, urllib.request, webbrowser
+import base64, hashlib, json, os, secrets, subprocess, sys, tempfile, threading, time, urllib.parse, urllib.request, webbrowser
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -7,9 +7,20 @@ import manager as core
 LOCK = threading.RLock()
 REOPEN = 0
 ICON_HANDLES = {}
-WINDOW_TITLES = ('LinX · 远程模型管理', 'Cindy · 远程模型管理')
+WINDOW_TITLES = ('LinX Remote', 'LinX · 远程模型管理', 'LinX 远程模型管理', 'Cindy · 远程模型管理')
 WINDOW_INSTANCE_PROPERTY = 'LinXRemoteKit.Port'
 APP_USER_MODEL_ID = 'LinX.Remote.ModelManager'
+
+def runtime_build_id():
+    digest=hashlib.sha256()
+    for name in core.PACKAGE_FILES:
+        path=core.ROOT/name
+        try: content=path.read_bytes()
+        except OSError: continue
+        digest.update(name.encode('utf-8'));digest.update(b'\0');digest.update(content);digest.update(b'\0')
+    return digest.hexdigest()
+
+RUNTIME_BUILD_ID=runtime_build_id()
 
 def window_taskbar_identity(hwnd):
     """Set identity on the browser-hosted window, not on the Python launcher."""
@@ -45,7 +56,7 @@ def window_taskbar_identity(hwnd):
         finally:ole.PropVariantClear(ctypes.byref(current))
         setvalue=ctypes.WINFUNCTYPE(ctypes.c_long,ctypes.c_void_p,ctypes.POINTER(PROPERTYKEY),ctypes.POINTER(PROPVARIANT))(vtable[6])
         commit=ctypes.WINFUNCTYPE(ctypes.c_long,ctypes.c_void_p)(vtable[7])
-        values={5:APP_USER_MODEL_ID,4:'LinX · 远程模型管理'}
+        values={5:APP_USER_MODEL_ID,4:'LinX Remote'}
         # Use the portable EXE for taskbar relaunch and its embedded icon.
         exe=core.APP_DIR/core.WINDOWS_APP
         if exe.is_file():values.update({2:subprocess.list2cmdline([str(exe)]),3:str(exe)+',0'})
@@ -160,9 +171,10 @@ def focus_manager(url):
     u.GetPropW.argtypes=[wintypes.HWND,wintypes.LPCWSTR]
     u.GetPropW.restype=wintypes.HANDLE
     u.SetPropW.argtypes=[wintypes.HWND,wintypes.LPCWSTR,wintypes.HANDLE]
+    # Reuse only a window already attached to this exact server instance. An
+    # unmarked window may belong to a previous process whose localhost server
+    # has exited; adopting it leaves the UI permanently showing its old page.
     matching=[h for h,t in found if u.GetPropW(h,WINDOW_INSTANCE_PROPERTY)==port]
-    if not matching:
-        matching=[h for h,t in found if t==WINDOW_TITLES[0] and not u.GetPropW(h,WINDOW_INSTANCE_PROPERTY)]
     u.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
     u.SetForegroundWindow.argtypes = [wintypes.HWND]
     u.PostMessageW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
@@ -249,15 +261,30 @@ def browser(url, reuse=False):
 
 def instance_path(): return core.STATE / 'ui-instance.json'
 
+def instance_call(url,op,timeout=2):
+    u=urllib.parse.urlsplit(url)
+    req=urllib.request.Request('http://127.0.0.1:%d/api' % u.port,
+        data=json.dumps({'op':op}).encode('utf-8'),
+        headers={'Content-Type':'application/json','X-Kit-Token':u.fragment})
+    with urllib.request.urlopen(req,timeout=timeout) as response:return json.load(response)
+
 def existing():
     try:
         instance = json.loads(instance_path().read_text(encoding='utf-8'))
         u = urllib.parse.urlsplit(instance['url'])
         if u.scheme != 'http' or u.hostname != '127.0.0.1': return None
-        req = urllib.request.Request('http://127.0.0.1:%d/api' % u.port, data=b'{"op":"ping"}',
-                                     headers={'Content-Type':'application/json', 'X-Kit-Token':u.fragment})
-        with urllib.request.urlopen(req,timeout=2) as r:
-            if json.load(r).get('ok'): return instance['url']
+        status=instance_call(instance['url'],'ping')
+        if not status.get('ok'):return None
+        # Every new launch takes ownership of the UI. Stop the older server
+        # cleanly before replacing its page and window; never leave two managers open.
+        instance_call(instance['url'],'quit',timeout=3)
+        deadline=time.monotonic()+10
+        while time.monotonic()<deadline:
+            try:instance_call(instance['url'],'ping',timeout=1)
+            except Exception:return None
+            time.sleep(.1)
+        raise RuntimeError('检测到旧版管理器，但它没有在 10 秒内退出。请从任务管理器结束旧版 LinX 后重试。')
+    except RuntimeError:raise
     except Exception: pass
     return None
 
@@ -279,7 +306,7 @@ def operation(data):
     global REOPEN
     op = data.get('op')
     with LOCK: s=core.read_settings()
-    if op == 'ping': return {'version':7, 'reopen':REOPEN}
+    if op == 'ping': return {'version':8, 'build':RUNTIME_BUILD_ID, 'reopen':REOPEN}
     if op == 'appearance':return save_ui_preferences(data.get('mode'))
     if op == 'appearance_sync':
         if os.name=='nt':
@@ -290,6 +317,9 @@ def operation(data):
         return {'reopen':REOPEN}
     if op == 'bootstrap': return {'settings':s, 'tunnel':core.tunnel_status(s), 'platform':sys.platform,'environment':core.environment_status(),'cindy_connections':core.cindy_connections()}
     if op == 'cindy_connections': return core.cindy_connections()
+    if op == 'monitor_status':
+        import server_monitor
+        return server_monitor.monitor.collect(s, force=bool(data.get('force')))
     if op == 'connection_detect':
         draft={k:data.get('settings',s).get(k,core.DEFAULT[k]) for k in core.DEFAULT}
         return core.detect_connection(draft,s)
@@ -334,8 +364,16 @@ def operation(data):
         return {'message':'已打开 SSH 登录终端；登录完成后可关闭终端，再回来连接。' if not command else '请在终端执行：'+command}
     if op == 'settings':
         new={k:data['settings'].get(k,core.DEFAULT[k]) for k in core.DEFAULT}
+        if new.get('auth_method') not in ('agent','password'):raise ValueError('请选择有效的 SSH 认证方式')
         if new['connection_source']=='cindy':
             new=core.cindy_selection(new,new['cindy_host'] or new['alias'])
+        # Register credentials against the normalized connection selected by the user.
+        # Detection may fill in the actual account name, so migrate the in-memory
+        # entry to that final SSH identity before returning. Never write it to disk.
+        initial_ssh_key=core.ssh_key(new)
+        supplied_password=data.get('ssh_password')
+        cached_password=core.SSH_PASSWORDS.get(initial_ssh_key)
+        core.set_ssh_password(new,supplied_password)
         detection=None
         if data.get('auto_detect'):
             detection=core.detect_connection(new,s)
@@ -351,6 +389,13 @@ def operation(data):
         core.ssh_base(new)
         if not new['home'].startswith('/'):raise ValueError('远程 Codex 目录需要使用服务器上的绝对路径')
         if any(new[k]!=s[k] for k in ('alias','host','user','port','identity','home','remote_port','local_port')) and core.tunnel_status(s).get('fresh'):raise ValueError('请先到“本机 Sub2API”停止旧隧道，再修改连接设置')
+        final_ssh_key=core.ssh_key(new)
+        if new.get('auth_method')=='password':
+            password=supplied_password or cached_password
+            if password:core.set_ssh_password(new,password)
+            if final_ssh_key!=initial_ssh_key:core.SSH_PASSWORDS.pop(initial_ssh_key,None)
+        elif final_ssh_key!=initial_ssh_key:
+            core.SSH_PASSWORDS.pop(initial_ssh_key,None)
         with LOCK:core.write_settings(new)
         return {'settings':new,'detection':detection}
     if op == 'export':
@@ -438,3 +483,4 @@ def prepare_server(open_browser):
     if os.name!='nt':instance_path().chmod(0o600)
     if open_browser:browser(url)
     return server
+

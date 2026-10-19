@@ -72,9 +72,8 @@ def main():
         executable = dest / manager.WINDOWS_APP
         win = dest / ('LinX-Remote-' + version + '-windows.zip')
         archive(win, public_files(), executable)
-        # GitHub normalizes non-ASCII asset names; keep the download name and
-        # checksum entry stable while preserving the Chinese EXE name in ZIP.
-        standalone = dest / 'LinX-Remote.exe'
+        # Keep the standalone Windows download aligned with the in-archive EXE name.
+        standalone = dest / 'LinX Remote.exe'
         executable.replace(standalone)
         outputs.extend([win, standalone])
     sums = '\n'.join(hashlib.sha256(p.read_bytes()).hexdigest() + '  ' + p.name for p in outputs) + '\n'

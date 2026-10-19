@@ -6,7 +6,7 @@
   <img src="LinX.png" alt="LinX Remote" width="80">
   <h1>LinX Remote</h1>
   <p><strong>让远程项目，接上你熟悉的模型服务。</strong></p>
-  <p>为 Cindy 远程 Codex 项目打造的供应商、模型与 SSH 隧道管理器。</p>
+  <p>将服务器连接、远程环境、模型服务与机器状态管理放在一起。</p>
   <p>
     <a href="https://github.com/LinX-Wang/linx-remote-manager/releases/latest">下载最新版</a> ·
     <a href="#快速开始">快速开始</a> ·
@@ -29,7 +29,7 @@
 
 ## 为什么做这个工具
 
-远程项目运行在服务器上，模型配置也需要落在服务器上。LinX Remote 把选择供应商、获取模型、切换配置、连接本机 Sub2API，以及准备远程运行环境这些操作放进一个界面。
+远程项目运行在服务器上，模型配置、运行环境和机器状态也需要一起管理。LinX Remote 把服务器连接、状态查看、选择供应商、获取模型、切换配置、连接本机 Sub2API，以及准备远程运行环境这些操作放进一个界面；连接服务器后，可以在同一处查看 GPU、系统负载、内存、磁盘和进程，判断资源是否足够再继续工作。
 
 你可以让服务器直连 API 服务，也可以通过反向 SSH 隧道使用电脑上已有的 Sub2API，不必给本机服务配置公网地址。
 
@@ -45,6 +45,8 @@
 | 原生菜单同步 | 将当前供应商所选模型同步到 Cindy 远程模型目录 |
 | 本机服务隧道 | 将服务器回环端口转发至本机 Sub2API，后台重连 |
 | 读取 Cindy 连接 | 优先选择 Cindy 使用的 SSH 配置，也支持手动添加 |
+| SSH 登录方式 | 手动连接支持账号密码（仅本次运行内存使用）、SSH Agent 与密钥配置指引 |
+| 服务器连接与状态 | 复用 Cindy 的 SSH 配置或手动连接；通过分区导航查看 GPU、系统进程、磁盘、内存与负载，GPU 使用者和 PID 清晰排列，进程参数会遮蔽常见凭据 |
 | 自动识别环境 | 连接时检测 Codex 安装、服务器端口占用与本机 Sub2API；保留手动调整 |
 | 个人目录环境 | 检查 gawk 与完整 Codex，已有可用版本则跳过 |
 | 可视化更新 | 检查更新、手动安装；在工具卡片内查看下载与安装进度 |
@@ -54,7 +56,7 @@
 
 ### 界面预览
 
-**连接与更新**：复用 Cindy 的 SSH 配置，按实际登录账号准备个人目录；更新进度紧邻操作按钮。
+**服务器连接、状态与更新**：复用 Cindy 的 SSH 配置，按实际登录账号准备个人目录；连接后可查看 GPU、系统进程和磁盘使用情况，更新进度紧邻操作按钮。
 
 ![服务器连接与就地更新进度](docs/assets/connection-updates.png)
 
@@ -100,7 +102,7 @@
 | macOS | 下载跨平台包，完整解压后打开其中的 `.app` 或 `.command` | Python 3.10+ 推荐；系统 OpenSSH |
 | 源码运行 | 克隆后执行下方命令 | Python 3.8+、OpenSSH、现代浏览器 |
 
-Windows 推荐下载 `LinX-Remote-<版本>-windows.zip`，解压后进入 `LinX-Remote` 文件夹，运行 **`LinX 远程模型管理.exe`**。下载页单独的 `LinX-Remote.exe` 也是可用入口；它与 ZIP 内程序用途相同。GitHub 的「Code → Download ZIP」是源码包，不是带 EXE 的 Windows 发行包。
+Windows 推荐下载 `LinX-Remote-<版本>-windows.zip`，完整解压后进入 `LinX-Remote` 文件夹，运行 **`LinX Remote.exe`**。若发行页提供独立 EXE，也使用同名的 `LinX Remote.exe`。GitHub 的「Code → Download ZIP」是源码包，不是带 EXE 的 Windows 发行包。
 
 ```bash
 git clone https://github.com/LinX-Wang/linx-remote-manager.git
@@ -112,7 +114,7 @@ macOS 可将命令中的 `python` 换为 `python3`。运行时只使用 Python �
 
 ### 2. 选择服务器
 
-先在 Cindy 的“远程连接”中配置服务器，再打开管理器的 **服务器连接 → 从 Cindy 选择服务器 → 使用并连接**。
+先在 Cindy 的“远程连接”中配置服务器，再打开管理器的 **服务器连接 → 从 Cindy 选择服务器 → 使用并连接**。连接成功后，管理器会在同一页面提供环境检查与更新入口；“服务器监控”通过当前 SSH 连接只读采集 GPU、系统负载、内存、磁盘和进程快照，并可用侧边分区导航跳转。系统负载显示 1、5、15 分钟平均任务数，不是 CPU 百分比；应结合服务器在线 CPU 核心数理解，不能将某一固定核心数当作所有服务器的标准。
 
 也可以手动填写服务器地址、SSH 端口和用户名。高级认证中填写的是密钥文件路径，不是密码，也不是私钥内容。首次登录需确认主机指纹，并确保 SSH Key / Agent 可用。
 
@@ -189,4 +191,3 @@ GitHub Actions 提供跨平台基础检查和手动/标签触发的发行包构�
 - [更新记录](CHANGELOG.md) · [使用指南](docs/USER_GUIDE.md) · [MIT License](LICENSE)
 
 <div align="center"><sub>由 LinX 打造 · Keep your remote workspace connected.</sub></div>
-

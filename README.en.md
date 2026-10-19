@@ -6,7 +6,7 @@
   <img src="LinX.png" alt="LinX Remote" width="80">
   <h1>LinX Remote</h1>
   <p><strong>Connect remote projects to the model services you already use.</strong></p>
-  <p>A provider, model, and SSH tunnel manager for Cindy's remote Codex projects.</p>
+  <p>Manage server connections, remote environments, model services, and machine status together.</p>
   <p>
     <a href="https://github.com/LinX-Wang/linx-remote-manager/releases/latest">Download</a> ·
     <a href="#quick-start">Quick start</a> ·
@@ -29,7 +29,7 @@
 
 ## Why LinX Remote?
 
-Remote projects run on a server, so their model configuration needs to live there too. LinX Remote brings provider selection, model discovery, configuration switching, access to local Sub2API, and remote environment setup into one interface.
+Remote projects run on a server, so their model configuration, runtime environment, and machine state need to be managed together. LinX Remote brings server connections, status checks, provider selection, model discovery, configuration switching, access to local Sub2API, and remote environment setup into one interface. Once connected, you can inspect GPU, system load, memory, disk, and process usage through the same SSH session before starting more work.
 
 Connect your server directly to an API provider, or use a reverse SSH tunnel to reach Sub2API on your computer without giving the local service a public IP address.
 
@@ -45,6 +45,8 @@ This is **an independent third-party project by LinX**, not an official Cindy or
 | Native menu synchronization | Sync the active provider's selected models to Cindy's remote model catalog |
 | Local service tunnel | Forward a server loopback port to local Sub2API, with background reconnection |
 | Cindy connection discovery | Prefer existing Cindy SSH configurations, with manual connections also supported |
+| SSH authentication | Manual connections support runtime-only passwords, SSH Agent, and private-key setup guidance |
+| Server connection and state | Reuse Cindy's SSH configuration or connect manually; use section navigation to inspect GPU, system processes, disks, memory, and load, with GPU users and PIDs neatly arranged and common credentials redacted from process arguments |
 | Automatic discovery | Check Codex installations, server port availability and local Sub2API on connect, with manual overrides |
 | Per-user environment | Check gawk and the complete Codex installation; skip tools that already work |
 | Visual updates | Check versions and install on demand, with progress inside the relevant tool card |
@@ -54,7 +56,7 @@ This is **an independent third-party project by LinX**, not an official Cindy or
 
 ### Interface preview
 
-**Connections and updates:** reuse Cindy's SSH configuration and prepare tools in the actual login account's home directory. Update progress stays next to its action button.
+**Server connection, state, and updates:** reuse Cindy's SSH configuration and prepare tools in the actual login account's home directory. After connecting, inspect GPU, system processes, and disk usage on the same page; update progress stays next to its action button.
 
 ![Server tools and inline update progress](docs/assets/connection-updates.png)
 
@@ -100,7 +102,7 @@ Visit [Releases](https://github.com/LinX-Wang/linx-remote-manager/releases/lates
 | macOS | Download the portable package, fully extract it, and open the `.app` or `.command` launcher | Python 3.10+ recommended; system OpenSSH |
 | From source | Clone the repository and run the commands below | Python 3.8+, OpenSSH, and a modern browser |
 
-On Windows, download `LinX-Remote-<version>-windows.zip`, fully extract it, open the `LinX-Remote` folder, and run **`LinX 远程模型管理.exe`**. The separate `LinX-Remote.exe` release asset serves the same purpose. GitHub's **Code → Download ZIP** downloads source code, not the Windows package with an EXE.
+On Windows, download `LinX-Remote-<version>-windows.zip`, fully extract it, open the `LinX-Remote` folder, and run **`LinX Remote.exe`**. If the release also provides a standalone executable, it is named `LinX Remote.exe` as well. GitHub's **Code → Download ZIP** downloads source code, not the Windows package with an EXE.
 
 ```bash
 git clone https://github.com/LinX-Wang/linx-remote-manager.git
@@ -112,7 +114,7 @@ On macOS, use `python3` instead of `python` if needed. Runtime code uses only th
 
 ### 2. Choose a server
 
-Configure your server in Cindy's remote connection settings first. Then open **服务器连接 (Server connection) → 从 Cindy 选择服务器 (Choose from Cindy) → 使用并连接 (Use and connect)** in the manager.
+Configure your server in Cindy's remote connection settings first. Then open **服务器连接 (Server connection) → 从 Cindy 选择服务器 (Choose from Cindy) → 使用并连接 (Use and connect)** in the manager. The same page provides environment checks and updates; **服务器监控 (Server monitoring)** reads GPU, system load, memory, disk, and process snapshots through the active SSH connection, with side navigation between sections. System load shows 1-, 5-, and 15-minute averages of runnable or uninterruptible tasks, not CPU percentages. Compare it with the server's online CPU core count; a fixed core count is not a universal reference.
 
 You can also enter a host, SSH port, and username manually. The advanced authentication field takes a private key **file path**, not a password or the contents of the key. On first login, verify the host fingerprint and make sure your SSH key or agent is available.
 
@@ -189,4 +191,3 @@ GitHub Actions provides cross-platform checks and manual or tag-triggered packag
 - [Changelog (中文)](CHANGELOG.md) · [User guide (中文)](docs/USER_GUIDE.md) · [MIT License](LICENSE)
 
 <div align="center"><sub>Made by LinX · Keep your remote workspace connected.</sub></div>
-

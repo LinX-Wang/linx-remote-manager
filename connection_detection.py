@@ -152,7 +152,8 @@ def detect(settings, previous, core):
     runner="import base64,json,sys;ns={'__name__':'linx_detection'};exec(compile(base64.b64decode(sys.stdin.readline()),'<linx-detection>','exec'),ns);print(json.dumps(ns['inspect_remote'](json.loads(sys.stdin.readline()))))"
     def remote():
         try:
-            result=subprocess.run(cmd+[destination,'python3 -c '+shlex.quote(runner)],input=base64.b64encode(source).decode()+'\n'+json.dumps(payload)+'\n',
+            ssh_run=getattr(core,'ssh_run',subprocess.run)
+            result=ssh_run(draft,cmd+[destination,'python3 -c '+shlex.quote(runner)],input=base64.b64encode(source).decode()+'\n'+json.dumps(payload)+'\n',
                                   stdout=subprocess.PIPE,stderr=subprocess.PIPE,encoding='utf-8',errors='replace',timeout=25,**core.HIDDEN)
         except subprocess.TimeoutExpired: raise ValueError('自动检测连接超时，原设置未修改；请确认服务器可通过 SSH 登录后重试') from None
         if result.returncode: raise ValueError('无法检测服务器，原设置未修改；请先打开 SSH 登录终端确认认证，并检查服务器 Python 3')

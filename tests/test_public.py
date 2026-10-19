@@ -71,6 +71,7 @@ class PublicDistribution(unittest.TestCase):
                 self.assertTrue(mode & 0o111)
                 self.assertNotIn(b'\r\n', archive.read('LinX-Remote/启动管理器.command'))
                 self.assertIn('LinX-Remote/docs/USER_GUIDE.md', names)
+                self.assertIn('LinX-Remote/server_monitor.py', names)
                 self.assertEqual(archive.read('LinX-Remote/启动管理器.vbs'), (ROOT/'启动管理器.vbs').read_bytes())
 
 
