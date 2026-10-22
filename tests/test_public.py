@@ -16,6 +16,17 @@ from tools import build_release
 
 
 class PublicDistribution(unittest.TestCase):
+    def test_current_window_title_is_recognized_for_maximize_and_icon(self):
+        self.assertTrue(web_app.is_manager_window_title('LinX Remote'))
+        self.assertTrue(web_app.is_manager_window_title('LinX · 远程模型管理'))
+        self.assertTrue(web_app.is_manager_window_title('LinX Remote [1]'))
+        self.assertFalse(web_app.is_manager_window_title('LinX Remote - Google Chrome'))
+
+    def test_hidden_chrome_placeholder_is_not_adopted_as_app_window(self):
+        self.assertFalse(web_app.app_window_is_ready(160, 28, True))
+        self.assertFalse(web_app.app_window_is_ready(1200, 800, False))
+        self.assertTrue(web_app.app_window_is_ready(1200, 800, True))
+
     def test_official_package_validation_and_cache(self):
         payload = b'fictional download fixture'
         spec = dict(url='https://github.com/openai/codex/releases/download/rust-v0.163.0/codex-package-x86_64-unknown-linux-musl.tar.gz',

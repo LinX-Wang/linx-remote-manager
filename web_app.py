@@ -75,14 +75,15 @@ def window_taskbar_identity(hwnd):
         if initialized:ole.CoUninitialize()
 
 def maintain_window_identity(port,stop):
-    """The browser can rewrite WM_SETICON after navigation or a theme change."""
+    """Refresh taskbar metadata without ever restoring a minimized window."""
     import ctypes
     from ctypes import wintypes
     u=ctypes.WinDLL('user32')
     u.GetPropW.argtypes=[wintypes.HWND,wintypes.LPCWSTR];u.GetPropW.restype=wintypes.HANDLE
+    u.IsIconic.argtypes=[wintypes.HWND];u.IsIconic.restype=wintypes.BOOL
     while not stop.wait(2):
         for hwnd,title in manager_windows()[1]:
-            if u.GetPropW(hwnd,WINDOW_INSTANCE_PROPERTY)==port:
+            if u.GetPropW(hwnd,WINDOW_INSTANCE_PROPERTY)==port and not u.IsIconic(hwnd):
                 apply_window_icon(hwnd)
 
 def ui_preferences():
@@ -144,6 +145,9 @@ def launch_lock():
             if os.name == 'nt': msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
             else: fcntl.flock(f.fileno(), fcntl.LOCK_UN)
 
+def is_manager_window_title(title):
+    return any(title == name or (title.startswith(name+' [') and title.endswith(']') and title[len(name+' ['):-1].isdigit()) for name in WINDOW_TITLES)
+
 def manager_windows():
     import ctypes
     from ctypes import wintypes
@@ -158,7 +162,7 @@ def manager_windows():
         title = ctypes.create_unicode_buffer(1024); cls = ctypes.create_unicode_buffer(256)
         u.GetWindowTextW(hwnd, title, len(title)); u.GetClassNameW(hwnd, cls, len(cls))
         # Ordinary browser tabs append a browser name; never close those.
-        if cls.value == 'Chrome_WidgetWin_1' and any(title.value == name or (title.value.startswith(name+' [') and title.value.endswith(']') and title.value[len(name+' ['):-1].isdigit()) for name in WINDOW_TITLES): found.append((hwnd,title.value))
+        if cls.value == 'Chrome_WidgetWin_1' and is_manager_window_title(title.value): found.append((hwnd,title.value))
         return True
     u.EnumWindows(visit, 0)
     return u, found
@@ -192,6 +196,10 @@ def apply_window_icon(hwnd):
     import ctypes
     from ctypes import wintypes
     u=ctypes.WinDLL('user32',use_last_error=True)
+    u.IsIconic.argtypes=[wintypes.HWND];u.IsIconic.restype=wintypes.BOOL
+    # Windows can expose a minimized app window to icon refreshes. Leave it
+    # untouched until the user restores it; metadata is refreshed afterwards.
+    if u.IsIconic(hwnd):return False
     u.LoadImageW.argtypes=[wintypes.HINSTANCE,wintypes.LPCWSTR,wintypes.UINT,ctypes.c_int,ctypes.c_int,wintypes.UINT]
     u.LoadImageW.restype=wintypes.HANDLE
     u.SendMessageTimeoutW.argtypes=[wintypes.HWND,wintypes.UINT,wintypes.WPARAM,wintypes.LPARAM,wintypes.UINT,wintypes.UINT,ctypes.POINTER(ctypes.c_size_t)]
@@ -203,6 +211,11 @@ def apply_window_icon(hwnd):
             result=ctypes.c_size_t()
             u.SendMessageTimeoutW(hwnd,0x80,kind,ICON_HANDLES[kind],2,250,ctypes.byref(result))
     native_appearance(hwnd)
+    return True
+
+def app_window_is_ready(width,height,visible):
+    """Reject Chrome's small hidden helper windows before adopting the app."""
+    return bool(visible and width>=600 and height>=400)
 
 def await_window_icon(url):
     import ctypes
@@ -211,14 +224,53 @@ def await_window_icon(url):
     u=ctypes.WinDLL('user32')
     u.GetPropW.argtypes=[wintypes.HWND,wintypes.LPCWSTR];u.GetPropW.restype=wintypes.HANDLE
     u.SetPropW.argtypes=[wintypes.HWND,wintypes.LPCWSTR,wintypes.HANDLE]
+    u.GetWindowRect.argtypes=[wintypes.HWND,ctypes.POINTER(wintypes.RECT)]
+    u.IsWindowVisible.argtypes=[wintypes.HWND];u.IsWindowVisible.restype=wintypes.BOOL
+    u.IsIconic.argtypes=[wintypes.HWND];u.IsIconic.restype=wintypes.BOOL
     u.ShowWindow.argtypes=[wintypes.HWND,ctypes.c_int]
+    u.SetWindowPos.argtypes=[wintypes.HWND,wintypes.HWND,ctypes.c_int,ctypes.c_int,ctypes.c_int,ctypes.c_int,wintypes.UINT]
+    work=wintypes.RECT()
+    has_work=bool(u.SystemParametersInfoW(0x0030,0,ctypes.byref(work),0))
+    startup_deadline=time.monotonic()+3
+    restored=set()
     for _ in range(200):
+        candidate=None
+        candidate_area=0
+        minimized=[]
         for hwnd,title in manager_windows()[1]:
-            if title==WINDOW_TITLES[0] and u.GetPropW(hwnd,WINDOW_INSTANCE_PROPERTY) in (None,port):
-                u.SetPropW(hwnd,WINDOW_INSTANCE_PROPERTY,port)
-                apply_window_icon(hwnd)
-                u.ShowWindow(hwnd,3)
-                return
+            if u.GetPropW(hwnd,WINDOW_INSTANCE_PROPERTY) not in (None,port):
+                continue
+            rect=wintypes.RECT()
+            if not u.GetWindowRect(hwnd,ctypes.byref(rect)):
+                continue
+            width,height=rect.right-rect.left,rect.bottom-rect.top
+            if u.IsIconic(hwnd):
+                minimized.append(hwnd)
+                continue
+            if not app_window_is_ready(width,height,bool(u.IsWindowVisible(hwnd))):
+                continue
+            area=width*height
+            if area>candidate_area:
+                candidate,candidate_area=hwnd,area
+        if candidate:
+            u.SetPropW(candidate,WINDOW_INSTANCE_PROPERTY,port)
+            if has_work:
+                # NOACTIVATE + NOOWNERZORDER: size the real app once without
+                # restoring it, stealing focus, or competing with Edge's state.
+                u.SetWindowPos(candidate,0,work.left,work.top,work.right-work.left,work.bottom-work.top,0x0010|0x0200)
+            apply_window_icon(candidate)
+            return
+        # Edge may reuse the app window left minimized by the previous server.
+        # Restore it only during launch; after this window of time, minimizing
+        # is always left under the user's control.
+        if time.monotonic()<startup_deadline:
+            for hwnd in minimized:
+                if hwnd not in restored:
+                    restored.add(hwnd)
+                    u.ShowWindow(hwnd,3)
+                    break
+        elif minimized:
+            return
         time.sleep(.15)
 
 def mac_focus(url):
@@ -322,6 +374,7 @@ def operation(data):
         return server_monitor.monitor.collect(s, force=bool(data.get('force')))
     if op == 'connection_detect':
         draft={k:data.get('settings',s).get(k,core.DEFAULT[k]) for k in core.DEFAULT}
+        if draft.get('auth_method')=='password':core.remember_ssh_password(draft,data.get('ssh_password'))
         return core.detect_connection(draft,s)
     if op == 'environment_start': return core.start_environment(s)
     if op == 'environment_status':

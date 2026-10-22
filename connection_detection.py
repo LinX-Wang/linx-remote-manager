@@ -137,9 +137,28 @@ def inspect_local(preferred=8080, hidden=None):
     return dict(status='not_found',value=preferred,candidates=[],note='未识别到本机 Sub2API；请启动服务或手动填写端口。直连供应商可忽略',docker_note=docker_note)
 
 
+def remote_failure_message(result):
+    """Turn common SSH and remote-runtime failures into safe, actionable guidance."""
+    detail='\n'.join(str(getattr(result,key,'') or '') for key in ('stderr','stdout')).lower()
+    suffix='原连接设置未修改。'
+    if 'host key verification failed' in detail or 'remote host identification has changed' in detail:
+        return '尚未确认服务器 SSH 主机指纹。点击“打开 SSH 登录终端”，核对指纹后输入 yes，再点“使用并连接”；如果指纹已变化，请先向服务器管理员核实。'+suffix
+    if any(mark in detail for mark in ('permission denied', 'no supported authentication methods', 'too many authentication failures')):
+        return 'SSH 已连接到服务器，但登录认证失败。请核对用户名、账号密码，或确认本机 SSH Agent 已加载正确私钥；也可先点“打开 SSH 登录终端”查看 SSH 的具体提示。'+suffix
+    if any(mark in detail for mark in ('python3: command not found', 'python3: not found', 'python3: no such file or directory', 'python: command not found')):
+        return 'SSH 登录成功，但服务器找不到 Python 3。请联系管理员安装 Python 3.8 或更新版本后重试。'+suffix
+    if 'could not resolve hostname' in detail or 'name or service not known' in detail or 'nodename nor servname provided' in detail:
+        return '无法解析服务器地址。请检查服务器 IP 或域名拼写，以及本机 DNS/网络。'+suffix
+    if any(mark in detail for mark in ('connection timed out', 'operation timed out', 'no route to host', 'connection refused')):
+        return '无法建立 SSH 网络连接。请核对服务器地址与端口，并检查服务器 SSH 服务、防火墙和本机网络。'+suffix
+    return '服务器自动检测命令失败（退出码 %s）。请先用“打开 SSH 登录终端”查看 SSH 提示；若已能登录，再确认服务器有 Python 3.8+。%s' % (getattr(result,'returncode','未知'),suffix)
+
+
 def detect(settings, previous, core):
     draft=dict(settings)
     for key in ('port','remote_port','local_port'): draft[key]=port_number(draft[key])
+    if draft.get('connection_source')=='manual' and not draft.get('user'):
+        raise ValueError('手动添加服务器时请填写用户名。也可以先打开 SSH 登录终端确认登录账号。')
     if draft['connection_source']=='cindy':draft=core.cindy_selection(draft,draft['cindy_host'] or draft['alias'])
     same=all(draft.get(k)==previous.get(k) for k in ('host','alias','user','port','identity'))
     owned=bool(same and core.tunnel_status(previous).get('fresh'))
@@ -156,7 +175,7 @@ def detect(settings, previous, core):
             result=ssh_run(draft,cmd+[destination,'python3 -c '+shlex.quote(runner)],input=base64.b64encode(source).decode()+'\n'+json.dumps(payload)+'\n',
                                   stdout=subprocess.PIPE,stderr=subprocess.PIPE,encoding='utf-8',errors='replace',timeout=25,**core.HIDDEN)
         except subprocess.TimeoutExpired: raise ValueError('自动检测连接超时，原设置未修改；请确认服务器可通过 SSH 登录后重试') from None
-        if result.returncode: raise ValueError('无法检测服务器，原设置未修改；请先打开 SSH 登录终端确认认证，并检查服务器 Python 3')
+        if result.returncode: raise ValueError(remote_failure_message(result))
         try:
             info=json.loads(result.stdout)
             if not isinstance(info['directory']['candidates'],list) or not info['user']: raise ValueError()

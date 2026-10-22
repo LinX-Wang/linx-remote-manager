@@ -36,6 +36,37 @@ class RemoteDetection(unittest.TestCase):
             self.assertEqual(result['tunnel']['status'],'in_use')
             self.assertNotIn('fictional-secret',json.dumps(result))
 
+    def test_ssh_failures_are_classified_for_the_user(self):
+        cases = [
+            ('Host key verification failed.', '主机指纹'),
+            ('Permission denied (publickey,password).', '认证失败'),
+            ('python3: command not found', 'Python 3'),
+            ('Could not resolve hostname server.invalid', '服务器地址'),
+            ('Connection timed out', '网络连接'),
+        ]
+        for stderr, expected in cases:
+            with self.subTest(stderr=stderr):
+                result = SimpleNamespace(returncode=255, stderr=stderr, stdout='')
+                message = d.remote_failure_message(result)
+                self.assertIn(expected.lower(), message.lower())
+                self.assertIn('原连接设置未修改', message)
+
+    def test_open_ssh_terminal_uses_a_defined_batch_argument(self):
+        with patch.object(manager, "ssh_base", return_value=(["ssh"], "developer@server.example")) as base, \
+             patch.object(manager.subprocess, "Popen") as popen:
+            manager.open_ssh_terminal(dict(manager.DEFAULT, host="server.example", user="developer"))
+        base.assert_called_once()
+        popen.assert_called_once()
+
+    def test_password_detection_uses_accept_new_without_batch_mode(self):
+        settings = dict(manager.DEFAULT, connection_source='manual', host='server.example', user='developer', auth_method='password')
+        with patch.object(manager.shutil, 'which', return_value='ssh'):
+            command, destination = manager.ssh_base(settings)
+        self.assertEqual(destination, 'developer@server.example')
+        self.assertIn('StrictHostKeyChecking=accept-new', command)
+        self.assertIn('PreferredAuthentications=password', command)
+        self.assertNotIn('BatchMode=yes', command)
+
     def test_ambiguous_install_and_owned_tunnel(self):
         with tempfile.TemporaryDirectory() as tmp:
             for version in ('v2','v3'):
@@ -103,6 +134,17 @@ class ConnectionWorkflow(unittest.TestCase):
             write.reset_mock();detected['directory']['status']='choose'
             result=web_app.operation(dict(op='settings',settings=draft,auto_detect=True))
             self.assertTrue(result['needs_selection']);write.assert_not_called()
+
+    def test_detection_password_is_runtime_only_and_available_to_ssh(self):
+        manager.SSH_PASSWORDS.clear()
+        draft=dict(manager.DEFAULT,connection_source='manual',host='server.example',user='developer',auth_method='password')
+        previous=dict(manager.DEFAULT)
+        with patch.object(manager,'read_settings',return_value=previous),              patch.object(manager,'detect_connection',return_value={'settings':draft}) as detect,              patch.object(manager,'write_settings') as write:
+            web_app.operation(dict(op='connection_detect',settings=draft,ssh_password='runtime-secret'))
+        passed=detect.call_args.args[0]
+        self.assertEqual(manager.SSH_PASSWORDS[manager.ssh_key(passed)], 'runtime-secret')
+        write.assert_not_called()
+        manager.SSH_PASSWORDS.clear()
 
     def test_detection_failure_never_overwrites_settings(self):
         draft=dict(manager.DEFAULT,connection_source='manual',host='server.example',user='developer')

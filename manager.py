@@ -41,7 +41,7 @@ def export_package(s, target):
         z.writestr('CindyRemoteKit/settings.json', json.dumps(s, ensure_ascii=False, indent=2))
 
 def open_ssh_terminal(s):
-    cmd, dest = ssh_base(s, batch=False)
+    cmd, dest = ssh_base(s)
     if os.name == 'nt':
         subprocess.Popen(cmd + [dest], creationflags=subprocess.CREATE_NEW_CONSOLE)
     elif sys.platform == 'darwin':
@@ -73,6 +73,11 @@ def cindy_selection(s,alias):
 
 def ssh_key(s):
     return '|'.join(str(s.get(k,'') or '') for k in ('connection_source','alias','host','user','port','identity'))
+
+def remember_ssh_password(s,password):
+    """Keep a user-supplied password across the username filled in by detection."""
+    key=ssh_key(s)
+    if password:SSH_PASSWORDS[key]=str(password)
 
 def set_ssh_password(s,password):
     key=ssh_key(s)
@@ -136,9 +141,10 @@ def ssh_base(s, batch=True):
     if not exe:
         hint = '请安装 Windows 可选功能 OpenSSH 客户端' if os.name == 'nt' else 'macOS 通常自带 /usr/bin/ssh，请检查系统与 PATH'
         raise ValueError('找不到 OpenSSH 客户端；' + hint)
-    cmd = [exe, '-o', 'ConnectTimeout=12', '-o', 'ServerAliveInterval=20', '-o', 'ServerAliveCountMax=3']
+    cmd = [exe, '-o', 'ConnectTimeout=12', '-o', 'ServerAliveInterval=20', '-o', 'ServerAliveCountMax=3',
+           '-o', 'StrictHostKeyChecking=accept-new']
     if batch and s.get('auth_method')!='password': cmd += ['-o', 'BatchMode=yes']
-    if batch and s.get('auth_method')=='password':cmd += ['-o','PreferredAuthentications=password','-o','PubkeyAuthentication=no','-o','NumberOfPasswordPrompts=1','-o','StrictHostKeyChecking=accept-new']
+    if batch and s.get('auth_method')=='password':cmd += ['-o','PreferredAuthentications=password','-o','PubkeyAuthentication=no','-o','NumberOfPasswordPrompts=1']
     if s.get('host'):
         host, user = s['host'].strip(), s['user'].strip()
         if not re.fullmatch(r'[A-Za-z0-9_.:-]+', host) or host.startswith('-'): raise ValueError('服务器地址格式无效')
