@@ -4,6 +4,37 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parent
 LOG=Path(tempfile.gettempdir())/'CindyRemoteKit-startup.log'
 
+def terminate_previous_instances():
+    """Keep one LinX Remote instance and remove stale same-path workers.
+
+    Cindy can leave a GUI process and tunnel workers behind after a restart.
+    They must not keep the old executable/configuration active when the user
+    launches the current copy.
+    """
+    if os.name != 'nt' or not getattr(sys, 'frozen', False): return
+    current_pid=os.getpid(); current=str(Path(sys.executable).resolve()).lower()
+    try:
+        import ctypes
+        import json
+        query="Get-CimInstance Win32_Process -Filter \"Name='LinX Remote.exe'\" | Select-Object ProcessId,ExecutablePath,CommandLine | ConvertTo-Json -Compress"
+        raw=subprocess.check_output(['powershell.exe','-NoProfile','-NonInteractive','-Command',query],
+                                    stderr=subprocess.DEVNULL,creationflags=subprocess.CREATE_NO_WINDOW,timeout=8)
+        rows=json.loads(raw.decode('utf-8','replace') or '[]')
+        if isinstance(rows,dict): rows=[rows]
+        for row in rows:
+            try:
+                pid=int(row.get('ProcessId',0))
+                path=str(row.get('ExecutablePath') or '').lower()
+                command=str(row.get('CommandLine') or '').strip().strip('\"').lower()
+            except (TypeError,ValueError): continue
+            if pid and pid != current_pid and path == current and command == current:
+                handle=ctypes.windll.kernel32.OpenProcess(0x0001|0x1000,False,pid)
+                if handle:
+                    ctypes.windll.kernel32.TerminateProcess(handle,1)
+                    ctypes.windll.kernel32.CloseHandle(handle)
+    except (OSError,subprocess.SubprocessError,ValueError,TypeError):
+        pass
+
 def windows_shortcuts():
     # Recreate machine-specific links after moving the portable executable.
     if os.name!='nt' or not getattr(sys,'frozen',False):return
@@ -43,6 +74,7 @@ if __name__=='__main__':
             sys.stdout=sys.stderr=log
             try:
                 os.chdir(ROOT)
+                terminate_previous_instances()
                 import manager
                 try:windows_shortcuts()
                 except (OSError,subprocess.SubprocessError):pass
@@ -51,4 +83,3 @@ if __name__=='__main__':
                 traceback.print_exc()
                 report('管理器未能启动。\n错误已保存在：\n'+str(LOG)+'\n请查看日志后重试，或将错误信息发给助手。')
                 sys.exit(1)
-

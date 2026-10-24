@@ -11,13 +11,13 @@ import manager
 MODELS = ['gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex', 'deepseek-v3.2', 'deepseek-reasoner', 'custom-research-model']
 SETTINGS = dict(manager.DEFAULT, alias='demo-server', user='developer',
                 cindy_host='demo-server', home='/home/developer/.xdt-server/v1/codex-home')
-HOSTS = {'hosts':[{'id':'demo-server', 'name':'演示工作空间', 'hostname':'server.example',
+HOSTS = {'hosts':[{'id':'demo-server', 'name':'婕旂ず宸ヤ綔绌洪棿', 'hostname':'server.example',
                    'user':'developer', 'port':22, 'managed_by_cindy':True}], 'warnings':[]}
 PROFILES = [
-    dict(id='demo-direct', name='演示中转站', mode='direct', base_url='https://api.example/v1',
-         model=MODELS[0], selected_models=MODELS, has_key=True),
-    dict(id='demo-tunnel', name='本机 Sub2API', mode='tunnel', base_url='http://127.0.0.1:18765/v1',
-         model=MODELS[0], selected_models=MODELS[:3], has_key=True),
+    dict(id='demo-direct', name='Demo Relay', mode='direct', base_url='https://api.example/v1',
+         model=MODELS[0], selected_models=MODELS, has_key=True, context_window=262144, context_windows={m:262144 for m in MODELS}),
+    dict(id='demo-tunnel', name='鏈満 Sub2API', mode='tunnel', base_url='http://127.0.0.1:18765/v1',
+         model=MODELS[0], selected_models=MODELS[:3], has_key=True, context_window=262144, context_windows={m:262144 for m in MODELS[:3]}),
 ]
 UPDATES = dict(state='done', items=[
     dict(name='Codex', installed='codex-cli 0.159.2', available='0.163.0', update=True),
@@ -111,7 +111,7 @@ def main():
             page.wait_for_timeout(400)
             page.screenshot(path=str(assets/('overview-'+mode+'.png')), full_page=True)
         page.evaluate("appearanceMode='light';applyAppearance('light');S.page='connection';render()")
-        page.evaluate("S.environment={tool:'Codex',state:'running',events:[{phase:'download',transfer:true,message:'演示：正在传输已校验的官方包',downloaded_bytes:96*1048576,total_bytes:160*1048576}]};renderEnvironment()")
+        page.evaluate("S.environment={tool:'Codex',state:'running',events:[{phase:'download',transfer:true,message:'婕旂ず锛氭鍦ㄤ紶杈撳凡鏍￠獙鐨勫畼鏂瑰寘',downloaded_bytes:96*1048576,total_bytes:160*1048576}]};renderEnvironment()")
         page.screenshot(path=str(assets/'connection-updates.png'), full_page=True)
         page.evaluate('S.monitor=' + json.dumps(MONITOR, ensure_ascii=False) + ";S.page='monitor';render()")
         page.wait_for_timeout(300)
@@ -122,6 +122,7 @@ def main():
         assert page.locator('#monitor-processes').evaluate('(e)=>e.getBoundingClientRect().top >= 0')
         page.locator('.section-rail button').first.click()
         page.wait_for_timeout(250)
+        page.evaluate('window.scrollTo(0, 0)')
         assert page.evaluate('scrollY < 2')
         page.evaluate("S.page='providers';render();openWizard(S.profiles[0]);S.models=" + repr(MODELS) + ';S.stage=2;drawWizard()')
         page.locator('.modal').screenshot(path=str(assets/'model-selection.png'))

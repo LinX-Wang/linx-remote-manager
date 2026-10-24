@@ -514,6 +514,10 @@ def prepare_server(open_browser):
                 else:result=operation(data)
                 reply={'ok':True,'data':result}
             except Exception as e:
+                try:
+                    with (core.STATE/'manager-errors.log').open('a',encoding='utf-8') as log:
+                        traceback.print_exc(file=log)
+                except Exception:pass
                 message=str(e) if isinstance(e,ValueError) else '操作未完成，请检查网络、文件权限和连接设置'
                 p=data.get('profile') if 'data' in locals() and isinstance(data,dict) else None
                 key=p.get('key') if isinstance(p,dict) else None

@@ -52,6 +52,17 @@ class Rpc:
   raise ValueError('Codex RPC timeout')
  def close(self):self.s.close()
 
+def rpc_after_restart(home, timeout=20):
+ deadline=time.monotonic()+timeout
+ last_error=None
+ while True:
+  try:return Rpc(home)
+  except (FileNotFoundError,ConnectionRefusedError,ConnectionResetError,TimeoutError) as error:
+   last_error=error
+   if time.monotonic()>=deadline:
+    raise ValueError('杩滅▼ Codex 鏈嶅姟宸查噸鍚紝浣嗘帶鍒惰繛鎺ュ皻鏈氨缁紱璇风瓑寰呮湇鍔″氨缁悗鍐嶈瘯') from last_error
+   time.sleep(0.25)
+
 
 PROVIDER_ID = 'cindy_portable'
 START = '# >>> cindy-portable-provider >>>'
@@ -60,7 +71,7 @@ CATALOG_KEY = 'model_catalog_json'
 # Cindy currently reserves this exact ID for its internal reviewer. Other IDs,
 # including non-GPT/custom IDs, are not filtered by its native remote mapper.
 CINDY_INTERNAL_MODEL_IDS = ('codex-auto-review',)
-TOOL_COMPAT_REVISION = 2
+TOOL_COMPAT_REVISION = 4
 COMPAT_BEGIN = '# >>> linx-function-tools '
 COMPAT_END = '# <<< linx-function-tools <<<'
 
@@ -127,50 +138,99 @@ def routed_profile(profile,proxy):
     copy=dict(profile);copy['base_url']='http://127.0.0.1:%s/%s/v1'%(proxy['port'],proxy['snapshot'])
     return copy
 
-def compatibility_proxy_alive(record):
+COMPAT_PORT = 43445
+COMPAT_VERSION = 2
+
+def compatibility_health(port):
+    opener=urllib.request.build_opener(urllib.request.ProxyHandler({}),NoRedirect())
+    with opener.open('http://127.0.0.1:%d/health' % int(port),timeout=2) as r:
+        return json.load(r)
+
+def compatibility_proxy_alive(record,directory=None):
     if not record:return False
     try:
-        if not isinstance(record.get('pid'),int) or not isinstance(record.get('port'),int):return False
+        if not isinstance(record.get('pid'),int) or record.get('port') != COMPAT_PORT:return False
         os.kill(record['pid'],0)
-        with urllib.request.urlopen('http://127.0.0.1:%s/health'%record['port'],timeout=2) as r:data=json.load(r)
-        return data.get('linx_compat_version')==1 and data.get('pid')==record['pid']
+        data=compatibility_health(record['port'])
+        return (data.get('linx_compat_version')==COMPAT_VERSION and data.get('pid')==record['pid']
+                and (directory is None or not data.get('state') or data.get('state')==str(directory)))
     except (OSError,ValueError,urllib.error.URLError):return False
 
+def stop_compatibility_proxy(record,directory):
+    # Migrate v1/random-port bridges safely. Verify the PID through /health before stopping.
+    if not record or not isinstance(record.get('pid'),int) or not isinstance(record.get('port'),int):return
+    try:
+        health=compatibility_health(record['port'])
+        if health.get('pid')!=record['pid']:return
+        os.kill(record['pid'],15)
+    except (OSError,ValueError,urllib.error.URLError):return
+    for _ in range(40):
+        try:
+            health=compatibility_health(record['port'])
+            if health.get('pid')!=record['pid']:return
+        except (OSError,ValueError,urllib.error.URLError):return
+        time.sleep(.1)
+
 def ensure_compatibility_proxy(home,state,profile):
+    # Keep this user-facing result stable even when the module was written through a legacy build shell.
+    conflict='\u670d\u52a1\u5668\u517c\u5bb9\u6865\u7aef\u53e3 %d \u5df2\u88ab\u5176\u4ed6\u7a0b\u5e8f\u5360\u7528\uff1b\u8bf7\u5173\u95ed\u5360\u7528\u7a0b\u5e8f\u540e\u91cd\u8bd5\uff0c\u672a\u4fee\u6539\u914d\u7f6e'
+    start_failed='\u670d\u52a1\u5668\u517c\u5bb9\u6865\u542f\u52a8\u5931\u8d25\uff1b\u7aef\u53e3 %d \u53ef\u80fd\u5df2\u88ab\u5360\u7528%s'
+    start_timeout='\u670d\u52a1\u5668\u517c\u5bb9\u6865\u542f\u52a8\u8d85\u65f6\uff1b\u7aef\u53e3 %d \u672a\u5c31\u7eea'
     directory=state/'responses-compat';directory.mkdir(mode=0o700,parents=True,exist_ok=True)
     status=directory/'status.json'
     try:record=json.loads(status.read_text())
     except (OSError,ValueError):record=None
     bridge_source=LINX_COMPAT_PROXY_SOURCE
     stale_source=True
-    try: stale_source=directory.joinpath('bridge.py').read_text() != bridge_source
-    except OSError: pass
-    if stale_source and record and compatibility_proxy_alive(record):
-        try: os.kill(record['pid'],15)
-        except OSError: pass
-        for _ in range(30):
-            if not compatibility_proxy_alive(record): break
-            time.sleep(.1)
+    try:stale_source=directory.joinpath('bridge.py').read_text()!=bridge_source
+    except OSError:pass
+    if stale_source:
+        stop_compatibility_proxy(record,directory);record=None
+    elif record and record.get('port')!=COMPAT_PORT:
+        stop_compatibility_proxy(record,directory);record=None
+    if not compatibility_proxy_alive(record,directory):
         record=None
-    if not compatibility_proxy_alive(record):
+        try:
+            health=compatibility_health(COMPAT_PORT)
+            if (health.get('linx_compat_version')==COMPAT_VERSION and isinstance(health.get('pid'),int)
+                    and (not health.get('state') or health.get('state')==str(directory))):
+                record={'pid':health['pid'],'port':COMPAT_PORT,'version':COMPAT_VERSION,'state':str(directory)}
+                private(status,json.dumps(record,ensure_ascii=False))
+        except (OSError,ValueError,urllib.error.URLError):
+            pass
+    if not record:
+        # A fixed port keeps the active Codex configuration valid across restarts and machine moves.
+        # Never silently choose another port: that would leave existing Codex routes pointing at a dead bridge.
+        try:
+            with socket.create_connection(('127.0.0.1',COMPAT_PORT),timeout=.8):
+                pass
+        except OSError:
+            pass
+        else:
+            raise ValueError(conflict % COMPAT_PORT)
         private(directory/'bridge.py',bridge_source)
         if status.exists():status.unlink()
         with (directory/'service.log').open('ab') as log:
             os.chmod(str(directory/'service.log'),0o600)
-            process=subprocess.Popen([sys.executable,str(directory/'bridge.py'),str(directory)],stdin=subprocess.DEVNULL,
-                stdout=log,stderr=log,start_new_session=True,close_fds=True)
-        deadline=time.monotonic()+5
+            process=subprocess.Popen([sys.executable,str(directory/'bridge.py'),str(directory),str(COMPAT_PORT)],
+                stdin=subprocess.DEVNULL,stdout=log,stderr=log,start_new_session=True,close_fds=True)
+        deadline=time.monotonic()+8
         while time.monotonic()<deadline:
             try:record=json.loads(status.read_text())
             except (OSError,ValueError):record=None
-            if compatibility_proxy_alive(record):break
-            if process.poll() is not None:raise ValueError('服务器工具兼容服务未能启动；未应用配置')
+            if compatibility_proxy_alive(record,directory):break
+            if process.poll() is not None:
+                try:detail=(directory/'service.log').read_text(errors='replace')[-800:]
+                except OSError:detail=''
+                raise ValueError(start_failed % (COMPAT_PORT,('\uff1a'+detail) if detail else ''))
             time.sleep(.1)
-        else:raise ValueError('服务器工具兼容服务启动超时；未应用配置')
+        else:
+            raise ValueError(start_timeout % COMPAT_PORT)
     snapshot=json.dumps({'base_url':profile['base_url'],'key':profile['key']},sort_keys=True)
     digest=hashlib.sha256(snapshot.encode()).hexdigest()
     private(directory/'configs'/(digest+'.json'),snapshot)
-    return {'pid':record['pid'],'port':record['port'],'snapshot':digest,'upstream_signature':upstream_signature(profile)}
+    return {'pid':record['pid'],'port':COMPAT_PORT,'snapshot':digest,'upstream_signature':upstream_signature(profile),
+            'version':COMPAT_VERSION}
 
 def model_menu_visibility(models):
     visible=[m for m in models if m not in CINDY_INTERNAL_MODEL_IDS]
@@ -203,23 +263,41 @@ def bundled_model_metadata(home):
 def generic_model_metadata(model,index):
     # Unknown models get conservative capabilities, never a renamed GPT capability profile.
     return {'slug':model,'display_name':model,'description':'通过当前供应商使用的自定义 Responses 模型',
-            'default_reasoning_level':'medium','supported_reasoning_levels':[],
+            'default_reasoning_level':'medium','supported_reasoning_levels':[
+                {'effort':'low','description':'Fast responses with lighter reasoning'},
+                {'effort':'medium','description':'Balances speed and reasoning depth for everyday tasks'},
+                {'effort':'high','description':'Greater reasoning depth for complex problems'},
+                {'effort':'max','description':'Maximum reasoning depth for the hardest problems'}],
             'shell_type':'shell_command','visibility':'list','supported_in_api':True,'priority':index,
             'base_instructions':'You are a helpful coding assistant. Follow the user instructions and use available tools when needed.',
             'supports_reasoning_summaries':False,'support_verbosity':False,
             'supports_parallel_tool_calls':False,'input_modalities':['text'],
-            'context_window':32768,'experimental_supported_tools':[],
+            'context_window':262144,'max_context_window':262144,'experimental_supported_tools':[],
             'truncation_policy':{'mode':'tokens','limit':10000}}
 
 def make_model_catalog(home,profile):
     import copy
     builtin=bundled_model_metadata(home)
+    default_context=profile.get('context_window',262144)
+    context_windows=profile.get('context_windows',{})
     rows=[]
     for index,model in enumerate(selected_models(profile)):
         row=copy.deepcopy(builtin[model]) if model in builtin else generic_model_metadata(model,index)
         row.update(slug=model,visibility='list',supported_in_api=True,priority=index)
         # A filtered catalogue must not advertise upgrades to models outside this supplier.
         row['upgrade']=None
+        # DeepSeek models supplied through a relay must expose the same controls as the
+        # local Cindy model.  Built-in Codex metadata can otherwise override the relay
+        # capabilities (for example, a 272K window with no reasoning selector).
+        if 'deepseek' in model.lower():
+            row.update(default_reasoning_level='medium',
+                      supported_reasoning_levels=[
+                          {'effort':'low','description':'Fast responses with lighter reasoning'},
+                          {'effort':'medium','description':'Balances speed and reasoning depth for everyday tasks'},
+                          {'effort':'high','description':'Greater reasoning depth for complex problems'},
+                          {'effort':'max','description':'Maximum reasoning depth for the hardest problems'}])
+        context_window=context_windows.get(model,default_context)
+        row.update(context_window=context_window, max_context_window=context_window)
         rows.append(row)
     return {'models':rows}
 
@@ -274,8 +352,9 @@ def probe_model_catalog(home,catalog,expected,return_rows=False):
                 process.stdin.close();process.stdout.close()
 
 def prepare_model_catalog(home,state,profile):
-    identity=catalog_binary_identity(home);models=selected_models(profile)
-    cache_key=fingerprint({'binary':identity,'models':models,'revision':TOOL_COMPAT_REVISION})
+    identity=catalog_binary_identity(home);models=selected_models(profile);context_window=profile.get('context_window',262144)
+    context_windows={model:profile.get('context_windows',{}).get(model,context_window) for model in models}
+    cache_key=fingerprint({'binary':identity,'models':models,'revision':TOOL_COMPAT_REVISION,'context_windows':context_windows})
     cache=state/'catalog-cache'/(cache_key+'.json')
     try:
         record=json.loads(cache.read_text())
@@ -285,6 +364,7 @@ def prepare_model_catalog(home,state,profile):
         compatibility='functions' if any(row.get('description')=='通过当前供应商使用的自定义 Responses 模型' for row in rows) else 'native'
         if (record.get('binary')==identity and record.get('models')==models
                 and record.get('compatibility_revision')==TOOL_COMPAT_REVISION
+                and record.get('context_windows')==context_windows
                 and record.get('path')==str(target) and record.get('tool_compatibility')==compatibility
                 and hashlib.sha256(content).hexdigest()==record['hash']
                 and [row['slug'] for row in rows]==models and catalog_binary_identity(home)==identity):
@@ -300,7 +380,7 @@ def prepare_model_catalog(home,state,profile):
     # Content-addressed files keep every backup's referenced catalogue immutable.
     if not target.exists() or target.read_bytes()!=content.encode():private(target,content)
     custom=any(row.get('description')=='通过当前供应商使用的自定义 Responses 模型' for row in catalog['models'])
-    record={'path':str(target),'hash':digest,'version':version,'models':models,'binary':identity,
+    record={'path':str(target),'hash':digest,'version':version,'models':models,'binary':identity,'context_windows':context_windows,
             'tool_compatibility':'functions' if custom else 'native','compatibility_revision':TOOL_COMPAT_REVISION}
     private(cache,json.dumps(record,ensure_ascii=False))
     return record
@@ -362,7 +442,10 @@ def private(path, data):
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     fd, name = tempfile.mkstemp(prefix='.write-', dir=str(path.parent))
     try:
-        os.fchmod(fd, 0o600)
+        if hasattr(os, 'fchmod'):
+            os.fchmod(fd, 0o600)
+        else:
+            os.chmod(name, 0o600)
         with os.fdopen(fd, 'w', encoding='utf-8', newline=chr(10)) as f:
             f.write(data); f.flush(); os.fsync(f.fileno())
         os.replace(name, str(path))
@@ -385,6 +468,17 @@ def validate(p):
     if not re.fullmatch(r'[a-zA-Z0-9_-]{1,48}', p.get('id', '')):
         raise ValueError('配置 ID 只能包含字母、数字、下划线、短横线，最多 48 位')
     p['selected_models'] = selected_models(p)
+    try: p['context_window'] = int(p.get('context_window',262144))
+    except (TypeError,ValueError): raise ValueError('上下文长度必须是整数')
+    if not 4096 <= p['context_window'] <= 2000000: raise ValueError('上下文长度需在 4096 到 2000000 之间')
+    values=p.get('context_windows') or {}
+    if not isinstance(values,dict): raise ValueError('各模型上下文配置格式无效')
+    p['context_windows']={}
+    for model in p['selected_models']:
+        try: value=int(values.get(model,p['context_window']))
+        except (TypeError,ValueError): raise ValueError('模型 '+model+' 的上下文长度必须是整数')
+        if not 4096 <= value <= 2000000: raise ValueError('模型 '+model+' 的上下文长度需在 4096 到 2000000 之间')
+        p['context_windows'][model]=value
     if p.get('model') not in p['selected_models']: p['model'] = p['selected_models'][0]
     for k in ('name', 'base_url', 'model', 'key'):
         if not isinstance(p.get(k), str) or not p[k].strip(): raise ValueError('缺少字段：' + k)
@@ -460,10 +554,17 @@ def runtime_snapshot(home):
                 t = c.rpc('thread/read', {'threadId':tid,'includeTurns':False})['thread']
                 row={'id':tid,'provider':t.get('modelProvider'),'status':t.get('status',{}).get('type')}
                 if row['status']=='systemError':
-                    detail=c.rpc('thread/read',{'threadId':tid,'includeTurns':True})['thread']
-                    turns=detail.get('turns',[])
-                    row['terminal_error']=bool(detail.get('status',{}).get('type')=='systemError' and turns
-                        and all(turn.get('status') in ('completed','failed','interrupted') for turn in turns))
+                    # Ephemeral threads reject includeTurns. A failed ephemeral test must not make
+                    # the whole daemon look unavailable or block routing changes.
+                    try:
+                        detail=c.rpc('thread/read',{'threadId':tid,'includeTurns':True})['thread']
+                    except ValueError:
+                        row['terminal_error']=True
+                    else:
+                        turns=detail.get('turns',[])
+                        row['terminal_error']=bool(detail.get('status',{}).get('type')=='systemError'
+                            and (not detail.get('ephemeral') or not turns)
+                            and (not turns or all(turn.get('status') in ('completed','failed','interrupted') for turn in turns)))
                 threads.append(row)
             cursor = page.get('nextCursor')
             if not cursor: break
@@ -506,7 +607,7 @@ def refresh_runtime(home, before, provider, model, eligible,preserve_models=Fals
     r=subprocess.run([str(home/'bin/codex'),'app-server','daemon','restart'],env=env,
                      stdout=subprocess.PIPE,stderr=subprocess.PIPE,universal_newlines=True,timeout=35)
     if r.returncode: raise ValueError('远程 Codex 服务刷新未完成；请检查服务器服务状态')
-    c=Rpc(home)
+    c=rpc_after_restart(home)
     try:
         restored=[]
         candidates={t['id']:t for t in before.get('saved_threads',[])}
@@ -655,7 +756,7 @@ def locked(req, home, state):
         existing = next((v for v in db['profiles'] if v['id'] == p.get('id')), None)
         if not p.get('key') and existing: p['key'] = existing['key']
         validate(p)
-        p = {k: p[k] for k in ('id', 'name', 'base_url', 'model', 'key', 'mode', 'selected_models')}
+        p = {k: p[k] for k in ('id', 'name', 'base_url', 'model', 'key', 'mode', 'selected_models', 'context_window', 'context_windows')}
         editing_active=p['id']==db.get('active')
         if not editing_active:
             db['profiles'] = [v for v in db['profiles'] if v['id'] != p['id']] + [p]
@@ -677,7 +778,7 @@ def locked(req, home, state):
         if not sync_only and p['id']==db.get('active'):
             current=info()
             old=get(p['id'])
-            same_route=all(p.get(k)==old.get(k) for k in ('base_url','model','key','selected_models'))
+            same_route=all(p.get(k)==old.get(k) for k in ('base_url','model','key','selected_models','context_window','context_windows'))
             if same_route and current['config_matches_active'] and current['runtime_matches_active'] and current['model_catalog']['status']=='synced':
                 if candidate:
                     db['profiles']=[p if v['id']==p['id'] else v for v in db['profiles']]
@@ -783,7 +884,7 @@ def locked(req, home, state):
         if not current['runtime_matches_active']: raise ValueError('运行中的路由尚未确认，请先启用该供应商')
         p=dict(get(db['active']))
         p['model']=selected_test_model(p,req.get('model'))
-        c=Rpc(home);tid=None;turn=None
+        c=Rpc(home);c.s.settimeout(90);tid=None;turn=None
         try:
             with tempfile.TemporaryDirectory(prefix='cindy-live-route-test-') as tmp:
                 result=c.rpc('thread/start',{'cwd':tmp,'ephemeral':True,'modelProvider':PROVIDER_ID,
@@ -846,7 +947,7 @@ def selected_test_model(profile, requested):
         raise ValueError('请选择该供应商已保存的一个模型进行测试')
     return model
 
-LINX_COMPAT_PROXY_SOURCE = '"""Loopback-only Responses namespace adapter. No inference or tool execution here."""\nimport copy,hashlib,hmac,json,os,re,sys,urllib.request,urllib.error\nfrom pathlib import Path\nfrom http.server import BaseHTTPRequestHandler,ThreadingHTTPServer\n\nVERSION=1\nclass NoRedirect(urllib.request.HTTPRedirectHandler):\n def redirect_request(self,*args):return None\n\ndef normalize_request(payload):\n payload=copy.deepcopy(payload);aliases={};forward={}\n def alias(namespace,name,custom=False):\n  key=(namespace or \'\',name,custom)\n  if key in forward:return forward[key]\n  candidate=(namespace+\'__\' if namespace else \'\')+name\n  if not re.fullmatch(r\'[A-Za-z0-9_-]{1,64}\',candidate):candidate=\'linx_\'+hashlib.sha256((str(key)).encode()).hexdigest()[:32]\n  if candidate in aliases and aliases[candidate]!=key:candidate=\'linx_\'+hashlib.sha256(str(key).encode()).hexdigest()[:48]\n  aliases[candidate]=key;forward[key]=candidate;return candidate\n def flatten(rows,namespace=\'\'):\n  result=[]\n  for original in rows:\n   row=copy.deepcopy(original);kind=row.get(\'type\')\n   if kind==\'namespace\':\n    child=row.get(\'name\',\'\');ns=namespace+\'.\'+child if namespace else child\n    result.extend(flatten(row.get(\'tools\',[]),ns));continue\n   if kind not in (\'function\',\'custom\'):raise ValueError(\'上游仅支持标准函数工具，当前仍有不兼容的内置工具类型：\'+str(kind))\n   name=row.get(\'name\')\n   if not isinstance(name,str):raise ValueError(\'工具缺少名称\')\n   custom=kind==\'custom\';name_alias=alias(namespace,name,custom)\n   if custom:\n    row={\'type\':\'function\',\'name\':name_alias,\'description\':row.get(\'description\',\'\'),\'parameters\':{\'type\':\'object\',\'properties\':{\'input\':{\'type\':\'string\',\'description\':\'Exact text input for this tool.\'}},\'required\':[\'input\'],\'additionalProperties\':False},\'strict\':True}\n   else:row[\'name\']=name_alias\n   if namespace:row[\'description\']=\'Tool group \'+namespace+\'. \'+row.get(\'description\',\'\')\n   result.append(row)\n  return result\n if \'tools\' in payload:payload[\'tools\']=flatten(payload[\'tools\'])\n id_map={}\n def response_id(value):\n  if not isinstance(value,str) or value.startswith(\'fc_\'):return value\n  if value not in id_map:id_map[value]=\'fc_\'+hashlib.sha256(value.encode()).hexdigest()[:32]\n  return id_map[value]\n def history(item):\n  if not isinstance(item,dict):return item\n  item=copy.deepcopy(item);kind=item.get(\'type\')\n  if kind in (\'function_call\',\'custom_tool_call\'):\n   namespace=item.pop(\'namespace\',None);custom=kind==\'custom_tool_call\';name=item.get(\'name\',\'\')\n   item[\'name\']=alias(namespace,name,custom)\n   if isinstance(item.get(\'id\'),str):item[\'id\']=response_id(item[\'id\'])\n   if isinstance(item.get(\'call_id\'),str):item[\'call_id\']=response_id(item[\'call_id\'])\n   if custom:item[\'type\']=\'function_call\';item[\'arguments\']=json.dumps({\'input\':item.pop(\'input\',\'\')})\n  elif kind==\'custom_tool_call_output\':\n   item[\'type\']=\'function_call_output\'\n   if isinstance(item.get(\'id\'),str):item[\'id\']=response_id(item[\'id\'])\n   if isinstance(item.get(\'call_id\'),str):item[\'call_id\']=response_id(item[\'call_id\'])\n  elif kind==\'function_call_output\' and isinstance(item.get(\'call_id\'),str):item[\'call_id\']=response_id(item[\'call_id\'])\n  return item\n if isinstance(payload.get(\'input\'),list):payload[\'input\']=[history(item) for item in payload[\'input\']]\n choice=payload.get(\'tool_choice\')\n if isinstance(choice,dict) and choice.get(\'type\') in (\'function\',\'custom\'):\n  choice[\'name\']=alias(choice.pop(\'namespace\',None),choice.get(\'name\',\'\'),choice.get(\'type\')==\'custom\');choice[\'type\']=\'function\'\n return payload,aliases\n\ndef restore_response(value,aliases):\n if isinstance(value,list):return [restore_response(v,aliases) for v in value]\n if not isinstance(value,dict):return value\n result={k:restore_response(v,aliases) for k,v in value.items()}\n if result.get(\'type\')==\'function_call\' and result.get(\'name\') in aliases:\n  namespace,name,custom=aliases[result[\'name\']];result[\'name\']=name\n  if namespace:result[\'namespace\']=namespace\n  if custom:\n   arguments=json.loads(result.pop(\'arguments\',\'{}\') or \'{}\')\n   result[\'type\']=\'custom_tool_call\';result[\'input\']=arguments.get(\'input\',\'\')\n return result\n\ndef private(path,data):\n path.parent.mkdir(mode=0o700,parents=True,exist_ok=True)\n temp=path.with_name(path.name+\'.\'+str(os.getpid())+\'.tmp\')\n fd=os.open(str(temp),os.O_WRONLY|os.O_CREAT|os.O_TRUNC,0o600)\n with os.fdopen(fd,\'w\') as f:f.write(data)\n os.replace(str(temp),str(path))\n\nclass Handler(BaseHTTPRequestHandler):\n protocol_version=\'HTTP/1.1\'\n def log_message(self,*args):pass\n def reply(self,status,data):\n  raw=json.dumps(data,ensure_ascii=False).encode();self.send_response(status);self.send_header(\'Content-Type\',\'application/json\');self.send_header(\'Content-Length\',str(len(raw)));self.end_headers();self.wfile.write(raw)\n def do_GET(self):\n  if self.path==\'/health\':return self.reply(200,{\'linx_compat_version\':VERSION,\'pid\':os.getpid()})\n  self.forward()\n def do_POST(self):self.forward()\n def forward(self):\n  try:\n   match=re.fullmatch(r\'/([a-f0-9]{64})/v1(/(?:responses|models)(?:/[A-Za-z0-9_-]+)*(?:\\?[^\\r\\n]*)?)\',self.path)\n   if not match:return self.reply(404,{\'error\':{\'message\':\'Unknown LinX compatibility route\'}})\n   path=self.server.state/\'configs\'/(match.group(1)+\'.json\')\n   if not path.is_file():return self.reply(404,{\'error\':{\'message\':\'Compatibility snapshot not found\'}})\n   profile=json.loads(path.read_text());expected=\'Bearer \'+profile[\'key\']\n   if not hmac.compare_digest(self.headers.get(\'Authorization\',\'\'),expected):return self.reply(401,{\'error\':{\'message\':\'Invalid compatibility authorization\'}})\n   headers={\'Authorization\':expected,\'User-Agent\':\'LinX-Responses-Compat/1.6\',\'Accept\':\'text/event-stream, application/json\',\'Accept-Encoding\':\'identity\'}\n   for name in (\'OpenAI-Beta\',\'OpenAI-Organization\',\'OpenAI-Project\'):\n    if self.headers.get(name):headers[name]=self.headers[name]\n   body=None;aliases={}\n   if self.command==\'POST\':\n    size=int(self.headers.get(\'Content-Length\',\'0\'))\n    if size>64*1024*1024:return self.reply(413,{\'error\':{\'message\':\'Request too large\'}})\n    if self.headers.get(\'Content-Encoding\',\'identity\')!=\'identity\':raise ValueError(\'不支持压缩请求，请关闭该供应商的请求压缩\')\n    body=json.loads(self.rfile.read(size));body,aliases=normalize_request(body);body=json.dumps(body,ensure_ascii=False).encode();headers[\'Content-Type\']=\'application/json\'\n   request=urllib.request.Request(profile[\'base_url\'].rstrip(\'/\')+match.group(2),data=body,headers=headers,method=self.command)\n   try:upstream=urllib.request.build_opener(NoRedirect()).open(request,timeout=120)\n   except urllib.error.HTTPError as e:\n    data=e.read(1024*1024);self.send_response(e.code);self.send_header(\'Content-Type\',e.headers.get(\'Content-Type\',\'application/json\'));self.send_header(\'Content-Length\',str(len(data)));self.end_headers();self.wfile.write(data);return\n   with upstream:\n    content_type=upstream.headers.get(\'Content-Type\',\'application/json\')\n    if \'text/event-stream\' in content_type:\n     self.send_response(upstream.status);self.send_header(\'Content-Type\',\'text/event-stream\');self.send_header(\'Cache-Control\',\'no-cache\');self.send_header(\'Connection\',\'close\');self.end_headers();self.close_connection=True\n     block=[];custom_ids=set()\n     for line in upstream:\n      if line.strip():block.append(line);continue\n      if not block:self.wfile.write(b\'\\n\');self.wfile.flush();continue\n      fields=[v.decode(\'utf-8\') for v in block];data=\'\\n\'.join(v[5:].lstrip(\' \') for v in fields if v.startswith(\'data:\'))\n      if data and data!=\'[DONE]\':\n       event=json.loads(data);item=event.get(\'item\',{})\n       if isinstance(item,dict) and item.get(\'name\') in aliases and aliases[item[\'name\']][2]:custom_ids.add(item.get(\'id\'))\n       if event.get(\'type\',\'\').startswith(\'response.function_call_arguments.\') and event.get(\'item_id\') in custom_ids:block=[];continue\n       restored=restore_response(event,aliases)\n       fields=[v for v in fields if not v.startswith(\'data:\')];fields.append(\'data: \'+json.dumps(restored,ensure_ascii=False))\n      self.wfile.write((\'\\n\'.join(fields)+\'\\n\\n\').encode());self.wfile.flush();block=[]\n    else:\n     data=upstream.read(64*1024*1024)\n     if \'json\' in content_type:data=json.dumps(restore_response(json.loads(data),aliases),ensure_ascii=False).encode()\n     self.send_response(upstream.status);self.send_header(\'Content-Type\',content_type);self.send_header(\'Content-Length\',str(len(data)));self.end_headers();self.wfile.write(data)\n  except (BrokenPipeError,ConnectionResetError):pass\n  except ValueError as e:self.reply(400,{\'error\':{\'message\':\'LinX 工具兼容：\'+str(e)[:300]}})\n  except Exception:self.reply(502,{\'error\':{\'message\':\'LinX 兼容服务无法完成上游请求，请检查中转站连接\'}})\n\ndef main():\n state=Path(sys.argv[1]);server=ThreadingHTTPServer((\'127.0.0.1\',0),Handler);server.state=state;server.daemon_threads=True\n private(state/\'status.json\',json.dumps({\'pid\':os.getpid(),\'port\':server.server_port,\'version\':VERSION}))\n server.serve_forever()\n\nif __name__==\'__main__\':main()\n'
+LINX_COMPAT_PROXY_SOURCE = '"""Loopback-only Responses namespace adapter. No inference or tool execution here."""\nimport copy,hashlib,hmac,json,os,re,sys,urllib.request,urllib.error\nfrom pathlib import Path\nfrom http.server import BaseHTTPRequestHandler,ThreadingHTTPServer\n\nclass CompatServer(ThreadingHTTPServer):\n allow_reuse_address=True\n daemon_threads=True\n\nclass CompatServer(ThreadingHTTPServer):\n allow_reuse_address=True\n daemon_threads=True\n\nVERSION=2\nclass NoRedirect(urllib.request.HTTPRedirectHandler):\n def redirect_request(self,*args):return None\n\ndef normalize_request(payload):\n payload=copy.deepcopy(payload);aliases={};forward={}\n def alias(namespace,name,custom=False):\n  key=(namespace or \'\',name,custom)\n  if key in forward:return forward[key]\n  candidate=(namespace+\'__\' if namespace else \'\')+name\n  if not re.fullmatch(r\'[A-Za-z0-9_-]{1,64}\',candidate):candidate=\'linx_\'+hashlib.sha256((str(key)).encode()).hexdigest()[:32]\n  if candidate in aliases and aliases[candidate]!=key:candidate=\'linx_\'+hashlib.sha256(str(key).encode()).hexdigest()[:48]\n  aliases[candidate]=key;forward[key]=candidate;return candidate\n def flatten(rows,namespace=\'\'):\n  result=[]\n  for original in rows:\n   row=copy.deepcopy(original);kind=row.get(\'type\')\n   if kind==\'namespace\':\n    child=row.get(\'name\',\'\');ns=namespace+\'.\'+child if namespace else child\n    result.extend(flatten(row.get(\'tools\',[]),ns));continue\n   if kind not in (\'function\',\'custom\'):raise ValueError(\'上游仅支持标准函数工具，当前仍有不兼容的内置工具类型：\'+str(kind))\n   name=row.get(\'name\')\n   if not isinstance(name,str):raise ValueError(\'工具缺少名称\')\n   custom=kind==\'custom\';name_alias=alias(namespace,name,custom)\n   if custom:\n    row={\'type\':\'function\',\'name\':name_alias,\'description\':row.get(\'description\',\'\'),\'parameters\':{\'type\':\'object\',\'properties\':{\'input\':{\'type\':\'string\',\'description\':\'Exact text input for this tool.\'}},\'required\':[\'input\'],\'additionalProperties\':False},\'strict\':True}\n   else:row[\'name\']=name_alias\n   if namespace:row[\'description\']=\'Tool group \'+namespace+\'. \'+row.get(\'description\',\'\')\n   result.append(row)\n  return result\n if \'tools\' in payload:payload[\'tools\']=flatten(payload[\'tools\'])\n id_map={}\n def response_id(value):\n  if not isinstance(value,str) or value.startswith(\'fc_\'):return value\n  if value not in id_map:id_map[value]=\'fc_\'+hashlib.sha256(value.encode()).hexdigest()[:32]\n  return id_map[value]\n def history(item):\n  if not isinstance(item,dict):return item\n  item=copy.deepcopy(item);kind=item.get(\'type\')\n  if kind in (\'function_call\',\'custom_tool_call\'):\n   namespace=item.pop(\'namespace\',None);custom=kind==\'custom_tool_call\';name=item.get(\'name\',\'\')\n   item[\'name\']=alias(namespace,name,custom)\n   if isinstance(item.get(\'id\'),str):item[\'id\']=response_id(item[\'id\'])\n   if isinstance(item.get(\'call_id\'),str):item[\'call_id\']=response_id(item[\'call_id\'])\n   if custom:item[\'type\']=\'function_call\';item[\'arguments\']=json.dumps({\'input\':item.pop(\'input\',\'\')})\n  elif kind==\'custom_tool_call_output\':\n   item[\'type\']=\'function_call_output\'\n   if isinstance(item.get(\'id\'),str):item[\'id\']=response_id(item[\'id\'])\n   if isinstance(item.get(\'call_id\'),str):item[\'call_id\']=response_id(item[\'call_id\'])\n  elif kind==\'function_call_output\' and isinstance(item.get(\'call_id\'),str):item[\'call_id\']=response_id(item[\'call_id\'])\n  return item\n if isinstance(payload.get(\'input\'),list):payload[\'input\']=[history(item) for item in payload[\'input\']]\n choice=payload.get(\'tool_choice\')\n if isinstance(choice,dict) and choice.get(\'type\') in (\'function\',\'custom\'):\n  choice[\'name\']=alias(choice.pop(\'namespace\',None),choice.get(\'name\',\'\'),choice.get(\'type\')==\'custom\');choice[\'type\']=\'function\'\n return payload,aliases\n\ndef restore_response(value,aliases):\n if isinstance(value,list):return [restore_response(v,aliases) for v in value]\n if not isinstance(value,dict):return value\n result={k:restore_response(v,aliases) for k,v in value.items()}\n if result.get(\'type\')==\'function_call\' and result.get(\'name\') in aliases:\n  namespace,name,custom=aliases[result[\'name\']];result[\'name\']=name\n  if namespace:result[\'namespace\']=namespace\n  if custom:\n   arguments=json.loads(result.pop(\'arguments\',\'{}\') or \'{}\')\n   result[\'type\']=\'custom_tool_call\';result[\'input\']=arguments.get(\'input\',\'\')\n return result\n\ndef private(path,data):\n path.parent.mkdir(mode=0o700,parents=True,exist_ok=True)\n temp=path.with_name(path.name+\'.\'+str(os.getpid())+\'.tmp\')\n fd=os.open(str(temp),os.O_WRONLY|os.O_CREAT|os.O_TRUNC,0o600)\n with os.fdopen(fd,\'w\') as f:f.write(data)\n os.replace(str(temp),str(path))\n\nclass Handler(BaseHTTPRequestHandler):\n protocol_version=\'HTTP/1.1\'\n def log_message(self,*args):pass\n def reply(self,status,data):\n  raw=json.dumps(data,ensure_ascii=False).encode();self.send_response(status);self.send_header(\'Content-Type\',\'application/json\');self.send_header(\'Content-Length\',str(len(raw)));self.end_headers();self.wfile.write(raw)\n def do_GET(self):\n  if self.path==\'/health\':return self.reply(200,{\'linx_compat_version\':VERSION,\'pid\':os.getpid(),\'state\':str(self.server.state)})\n  self.forward()\n def do_POST(self):self.forward()\n def forward(self):\n  try:\n   match=re.fullmatch(r\'/([a-f0-9]{64})/v1(/(?:responses|models)(?:/[A-Za-z0-9_-]+)*(?:\\?[^\\r\\n]*)?)\',self.path)\n   if not match:return self.reply(404,{\'error\':{\'message\':\'Unknown LinX compatibility route\'}})\n   path=self.server.state/\'configs\'/(match.group(1)+\'.json\')\n   if not path.is_file():return self.reply(404,{\'error\':{\'message\':\'Compatibility snapshot not found\'}})\n   profile=json.loads(path.read_text());expected=\'Bearer \'+profile[\'key\']\n   if not hmac.compare_digest(self.headers.get(\'Authorization\',\'\'),expected):return self.reply(401,{\'error\':{\'message\':\'Invalid compatibility authorization\'}})\n   headers={\'Authorization\':expected,\'User-Agent\':\'LinX-Responses-Compat/1.6\',\'Accept\':\'text/event-stream, application/json\',\'Accept-Encoding\':\'identity\'}\n   for name in (\'OpenAI-Beta\',\'OpenAI-Organization\',\'OpenAI-Project\'):\n    if self.headers.get(name):headers[name]=self.headers[name]\n   body=None;aliases={}\n   if self.command==\'POST\':\n    size=int(self.headers.get(\'Content-Length\',\'0\'))\n    if size>64*1024*1024:return self.reply(413,{\'error\':{\'message\':\'Request too large\'}})\n    if self.headers.get(\'Content-Encoding\',\'identity\')!=\'identity\':raise ValueError(\'不支持压缩请求，请关闭该供应商的请求压缩\')\n    body=json.loads(self.rfile.read(size));body,aliases=normalize_request(body);body=json.dumps(body,ensure_ascii=False).encode();headers[\'Content-Type\']=\'application/json\'\n   request=urllib.request.Request(profile[\'base_url\'].rstrip(\'/\')+match.group(2),data=body,headers=headers,method=self.command)\n   try:upstream=urllib.request.build_opener(urllib.request.ProxyHandler({}),NoRedirect()).open(request,timeout=120)\n   except urllib.error.HTTPError as e:\n    data=e.read(1024*1024);self.send_response(e.code);self.send_header(\'Content-Type\',e.headers.get(\'Content-Type\',\'application/json\'));self.send_header(\'Content-Length\',str(len(data)));self.end_headers();self.wfile.write(data);return\n   with upstream:\n    content_type=upstream.headers.get(\'Content-Type\',\'application/json\')\n    if \'text/event-stream\' in content_type:\n     self.send_response(upstream.status);self.send_header(\'Content-Type\',\'text/event-stream\');self.send_header(\'Cache-Control\',\'no-cache\');self.send_header(\'Connection\',\'close\');self.end_headers();self.close_connection=True\n     block=[];custom_ids=set()\n     for line in upstream:\n      if line.strip():block.append(line);continue\n      if not block:self.wfile.write(b\'\\n\');self.wfile.flush();continue\n      fields=[v.decode(\'utf-8\') for v in block];data=\'\\n\'.join(v[5:].lstrip(\' \') for v in fields if v.startswith(\'data:\'))\n      if data and data!=\'[DONE]\':\n       event=json.loads(data);item=event.get(\'item\',{})\n       if isinstance(item,dict) and item.get(\'name\') in aliases and aliases[item[\'name\']][2]:custom_ids.add(item.get(\'id\'))\n       if event.get(\'type\',\'\').startswith(\'response.function_call_arguments.\') and event.get(\'item_id\') in custom_ids:block=[];continue\n       restored=restore_response(event,aliases)\n       fields=[v for v in fields if not v.startswith(\'data:\')];fields.append(\'data: \'+json.dumps(restored,ensure_ascii=False))\n      self.wfile.write((\'\\n\'.join(fields)+\'\\n\\n\').encode());self.wfile.flush();block=[]\n    else:\n     data=upstream.read(64*1024*1024)\n     if \'json\' in content_type:data=json.dumps(restore_response(json.loads(data),aliases),ensure_ascii=False).encode()\n     self.send_response(upstream.status);self.send_header(\'Content-Type\',content_type);self.send_header(\'Content-Length\',str(len(data)));self.end_headers();self.wfile.write(data)\n  except (BrokenPipeError,ConnectionResetError):pass\n  except ValueError as e:self.reply(400,{\'error\':{\'message\':\'LinX 工具兼容：\'+str(e)[:300]}})\n  except Exception:self.reply(502,{\'error\':{\'message\':\'LinX 兼容服务无法完成上游请求，请检查中转站连接\'}})\n\ndef main():\n state=Path(sys.argv[1]);port=int(sys.argv[2]) if len(sys.argv)>2 else 43445\n server=CompatServer((\'127.0.0.1\',port),Handler);server.state=state\n private(state/\'status.json\',json.dumps({\'pid\':os.getpid(),\'port\':server.server_port,\'version\':VERSION,\'state\':str(state)}))\n server.serve_forever()\n\nif __name__==\'__main__\':main()\n'
 
 if __name__ == '__main__':
     try:

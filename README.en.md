@@ -172,8 +172,12 @@ The tunnel binds to `127.0.0.1` on the server. The default server port is `18765
 - Environment setup does not run `sudo`, replace system `awk`, or modify other users' configurations.
 - The manager reuses Cindy's SSH configuration but establishes a separate SSH connection. First use may require separate host fingerprint confirmation.
 - Projects using the same server account and Codex HOME share configuration. Provider switches and upgrades check whether remote tasks are idle.
-- Cindy updates may change its Codex version, model catalog, or internal session interfaces. Cindy may reinstall its required version over a newer Codex installation. Compatibility with every future version is not guaranteed.
+- Cindy updates may change its Codex version, model catalog, or internal session interfaces. The connection check reuses a complete, runnable Codex already on the server and does not downgrade it solely because its version is newer; future Cindy interface changes may still require an adaptation.
 - Non-GPT models also depend on the upstream service's Responses and tool-calling compatibility. A model appearing in the menu does not mean every tool has been validated with it.
+
+## Reasoning effort and context length
+
+When editing a provider, the model selection page shows a context length for every selected model (262144 tokens by default) and lets you change them independently. The remote catalog exposes low, medium, high, and max reasoning efforts and forwards the selected effort to Codex. Whether a relay accepts a value is decided by that service; a rejection is returned as the server error.
 
 ## Development and releases
 
