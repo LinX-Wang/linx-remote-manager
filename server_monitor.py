@@ -1,12 +1,36 @@
 """Read-only server metrics collected over the manager's existing SSH connection."""
 from __future__ import annotations
 import csv
+import json
 import re
 import shlex
 import subprocess
 import threading
 import time
 from typing import Any
+
+DISK_PATH_SCRIPT = r'''
+import json, os, pwd, subprocess
+targets = [('user_home', pwd.getpwuid(os.geteuid()).pw_dir),
+           ('codex_home', os.environ.get('LINX_MONITOR_HOME', ''))]
+rows = []
+for kind, path in targets:
+    if not path or not os.path.exists(path):
+        continue
+    resolved = os.path.realpath(path)
+    try:
+        result = subprocess.run(['df', '-Pk', resolved], stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE, universal_newlines=True, timeout=3)
+        fields = result.stdout.splitlines()[-1].split(None, 5)
+        if result.returncode == 0 and len(fields) == 6 and fields[4].endswith('%'):
+            rows.append(dict(kind=kind, path=resolved, filesystem=fields[0],
+                             size_kb=int(fields[1]), used_kb=int(fields[2]),
+                             available_kb=int(fields[3]), percent=int(fields[4][:-1]),
+                             mount=fields[5]))
+    except (OSError, ValueError, IndexError, subprocess.TimeoutExpired):
+        pass
+print(json.dumps(rows))
+'''
 
 REMOTE_SCRIPT = r"""
 printf '__GPU__\n'
@@ -21,6 +45,8 @@ printf '__CPU__\n'
 getconf _NPROCESSORS_ONLN 2>/dev/null || nproc 2>/dev/null || grep -c '^processor' /proc/cpuinfo 2>/dev/null || printf '0\n'
 printf '__DISK__\n'
 df -Pk -x tmpfs -x devtmpfs 2>/dev/null
+printf '__PATHS__\n'
+LINX_MONITOR_HOME=__LINX_CODEX_HOME__ python3 -c __LINX_DISK_PATH_SCRIPT__ 2>/dev/null || :
 printf '__PS__\n'
 ps -eo user=,pid=,pcpu=,pmem=,comm=,args= --sort=-pcpu 2>&1 | head -n 300
 ps -u "$(id -un)" -o user=,pid=,pcpu=,pmem=,comm=,args= --sort=-pcpu 2>&1
@@ -34,7 +60,7 @@ def _number(value: str) -> float | int | None:
         return None
 
 def _sections(raw: str) -> dict[str, str]:
-    names = ("GPU", "PMON", "MEM", "LOAD", "CPU", "DISK", "PS")
+    names = ("GPU", "PMON", "MEM", "LOAD", "CPU", "DISK", "PATHS", "PS")
     found = {}
     for i, name in enumerate(names):
         start = raw.find("__" + name + "__")
@@ -100,6 +126,21 @@ def parse_snapshot(raw: str) -> dict[str, Any]:
         fields = line.split(None, 5)
         if len(fields) >= 6 and fields[4].endswith("%"):
             disks.append({"filesystem": fields[0], "size_kb": _number(fields[1]) or 0, "used_kb": _number(fields[2]) or 0, "available_kb": _number(fields[3]) or 0, "percent": _number(fields[4]) or 0, "mount": fields[5]})
+    try:
+        paths = json.loads(part['PATHS'] or '[]')
+    except (ValueError, TypeError):
+        paths = []
+    for target in paths if isinstance(paths, list) else []:
+        if not isinstance(target, dict) or not all(k in target for k in ('mount', 'filesystem', 'path', 'kind')):
+            continue
+        disk = next((d for d in disks if d['mount'] == target['mount'] and d['filesystem'] == target['filesystem']), None)
+        if disk is None:
+            if not all(k in target for k in ('size_kb', 'used_kb', 'available_kb', 'percent')):
+                continue
+            disk = {k: target[k] for k in ('filesystem', 'mount', 'size_kb', 'used_kb', 'available_kb', 'percent')}
+            disks.append(disk)
+        disk['focus'] = True
+        disk.setdefault('related_paths', []).append({'kind': target['kind'], 'path': target['path']})
     top = sorted(processes.values(), key=lambda p: float(p.get("cpu", 0)), reverse=True)[:300]
     return {"gpus": gpus, "memory": memory, "load": load, "cpu_cores": cpu_cores, "disks": disks, "processes": top, "collected_at": int(time.time())}
 
@@ -114,14 +155,15 @@ class Monitor:
         import manager
         ssh, destination = manager.ssh_base(settings)
         identity = settings.get("identity", "") if settings.get("host") else settings.get("alias", "")
-        key = (destination, settings.get("user", ""), settings.get("port"), identity)
+        key = (destination, settings.get("user", ""), settings.get("port"), identity, settings.get('home', ''))
         with self.lock:
             if self.cache is not None and self.cache_key == key and not force and time.monotonic() - self.cache_time < 4:
                 return dict(self.cache)
             try:
                 # Pass bytes so Windows does not translate LF to CRLF before SSH
                 # forwards the script to POSIX sh (CR characters break shell syntax).
-                result = manager.ssh_run(settings, ssh + [destination, "sh -s"], input=REMOTE_SCRIPT.encode("utf-8"), capture_output=True, timeout=28, **manager.HIDDEN)
+                script = REMOTE_SCRIPT.replace('__LINX_CODEX_HOME__', shlex.quote(settings.get('home', ''))).replace('__LINX_DISK_PATH_SCRIPT__', shlex.quote(DISK_PATH_SCRIPT))
+                result = manager.ssh_run(settings, ssh + [destination, "sh -s"], input=script.encode("utf-8"), capture_output=True, timeout=28, **manager.HIDDEN)
                 if result.returncode:
                     error = result.stderr or result.stdout or "SSH 连接失败"
                     if isinstance(error, bytes):

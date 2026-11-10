@@ -80,7 +80,9 @@ Codex 来源是 OpenAI 官方完整 package，gawk 来源是相应发行版包�
 
 ## 6. 主题与数据
 
-右上角太阳/月亮按钮手动切换；「自动」在本机时间 7:00 使用日间、19:00 使用夜间。窗口支持最大化与窄视口布局。
+右上角提供「日间／夜间／跟随时间」三段选择；跟随时间在本机时间 7:00 使用日间、19:00 使用夜间，Windows 标题栏同步切换。应用使用独立浏览器配置，不改变日常 Edge／Chrome 设置。窗口支持最大化与窄视口布局，右侧分区导航留有独立空间。
+
+字体随包离线提供，中文使用完整 Noto Sans SC、英文使用 Inter、数据数字使用 JetBrains Mono。GPU 进程采用紧凑用户名小框与 PID，当前磁盘按真实目录所在文件系统高亮置顶。右上角红色退出按钮关闭管理界面并保留后台隧道。源码用户先执行 `python -m pip install -r requirements.txt` 安装运行依赖；Windows EXE 已包含这些依赖。
 
 连接设置位于启动目录的 `settings.json`。状态缓存位于 Windows 的 `%LOCALAPPDATA%/CindyRemoteKit` 或 macOS 的 `~/Library/Application Support/CindyRemoteKit`；启动错误日志为系统临时目录下的 `CindyRemoteKit-startup.log`。供应商凭据留在服务器 Codex HOME 中，不是加密保险库。
 

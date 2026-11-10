@@ -31,6 +31,10 @@ def audit():
         relative = path.relative_to(ROOT).as_posix()
         if path.name in PRIVATE_NAMES or path.suffix.lower() in {'.pem', '.key', '.bak', '.old', '.exe', '.zip', '.log'}:
             issues.append(relative + ': personal/runtime artifact')
+        if path.suffix.lower() == '.woff2' and relative in {'assets/fonts/Inter.woff2', 'assets/fonts/NotoSansSC.woff2', 'assets/fonts/JetBrainsMono.woff2'}:
+            if path.read_bytes()[:4] != b'wOF2':
+                issues.append(relative + ': invalid WOFF2 font')
+            continue
         if path.suffix.lower() in {'.png', '.ico', '.icns'}:
             continue
         try:

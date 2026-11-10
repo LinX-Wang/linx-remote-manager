@@ -42,3 +42,8 @@ portable-providers/
 Thumbs.db
 .idea/
 .vscode/
+
+# Local repair data and isolated browser state
+repair-backups/
+ui-browser/
+*.before-*

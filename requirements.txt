@@ -1,1 +1,2 @@
-# Python 3.8+; standard library only; a modern web browser. No tkinter or pip packages.
+# Python 3.8+; a modern web browser. Packaged Windows builds include this dependency.
+websocket-client>=1.8,<2

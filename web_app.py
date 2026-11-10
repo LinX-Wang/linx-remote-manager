@@ -4,6 +4,7 @@ from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import manager as core
+import browser_shell
 LOCK = threading.RLock()
 REOPEN = 0
 ICON_HANDLES = {}
@@ -99,7 +100,9 @@ def native_appearance(hwnd):
     if os.name!='nt':return
     import ctypes
     from ctypes import wintypes
-    dark=ctypes.c_int(resolved_theme(ui_preferences()['mode'])=='dark')
+    is_dark=resolved_theme(ui_preferences()['mode'])=='dark'
+    browser_shell.sync_theme(core.STATE,is_dark)
+    dark=ctypes.c_int(is_dark)
     try:
         dwm=ctypes.WinDLL('dwmapi')
         dwm.DwmSetWindowAttribute.argtypes=[wintypes.HWND,wintypes.DWORD,ctypes.c_void_p,wintypes.DWORD]
@@ -303,7 +306,8 @@ def browser(url, reuse=False):
                       Path(os.environ.get('PROGRAMFILES', 'C:/Program Files')) / 'Google/Chrome/Application/chrome.exe']
         for exe in candidates:
             if exe.is_file():
-                subprocess.Popen([str(exe), '--app='+url, '--no-first-run', '--start-maximized'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **core.HIDDEN)
+                shell_args=browser_shell.launch_arguments(core.STATE,resolved_theme(ui_preferences()['mode'])=='dark')
+                subprocess.Popen([str(exe), '--app='+url, '--no-first-run', '--start-maximized', *shell_args], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **core.HIDDEN)
                 if reuse:await_window_icon(url)
                 else:threading.Thread(target=await_window_icon,args=(url,),daemon=True).start()
                 return
@@ -495,6 +499,11 @@ def prepare_server(open_browser):
         def do_GET(self):
             if not self.host_ok():return self.send(404,b'{}')
             if self.path=='/favicon.ico':return self.send(200,(core.ROOT/'LinX.ico').read_bytes(),'image/x-icon')
+            if self.path.startswith('/assets/'):
+                name=self.path[1:]
+                if name not in core.PUBLIC_ASSET_FILES:return self.send(404,b'{}')
+                typ='font/woff2' if name.endswith('.woff2') else 'image/svg+xml' if name.endswith('.svg') else 'text/plain; charset=utf-8'
+                return self.send(200,(core.ROOT/name).read_bytes(),typ)
             if self.path!='/':return self.send(404,b'{}')
             html=(core.ROOT/'manager_ui.html').read_text(encoding='utf-8')
             html=html.replace('name="linx-theme" content="auto"','name="linx-theme" content="'+ui_preferences()['mode']+'"')

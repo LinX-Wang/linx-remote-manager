@@ -199,3 +199,13 @@ GitHub Actions provides cross-platform checks and manual or tag-triggered packag
 - [Changelog (中文)](CHANGELOG.md) · [User guide (中文)](docs/USER_GUIDE.md) · [MIT License](LICENSE)
 
 <div align="center"><sub>Made by LinX · Keep your remote workspace connected.</sub></div>
+
+## New in 1.8.6
+
+- Offline Inter, complete Noto Sans SC and JetBrains Mono fonts, including OFL licenses and the LinX maker mark.
+- Full-width responsive content, larger text, semantic metric colors and a reserved navigation lane.
+- Day / Night / Follow time controls with a synchronized Windows title bar and an isolated app browser profile.
+- Red top-right exit button, sidebar connection card and resource summary, GPU identity badges and compact username/PID chips.
+- Automatic highlighting and ordering of the filesystem containing the current account and Codex directories; improved connection evidence.
+
+The Windows EXE uses an installed Edge/Chrome app window to display its interface. Source users should run python -m pip install -r requirements.txt before launching. Public packages exclude personal configuration, credentials, logs, repair backups and browser data. All screenshots use fictional data.

@@ -21,6 +21,10 @@ ENV_JOB = None
 UPDATES_JOB = None
 PACKAGE_FILES = ('connection_detection.py', 'download_bridge.py', 'cindy_connections.py', 'remote_environment.py', 'server_monitor.py', 'manager.py', 'remote_manager.py', 'web_app.py', 'manager_ui.html', 'launch.pyw', '启动管理器.vbs', '启动管理器.cmd', '诊断启动.cmd', '启动管理器.command', '使用说明.md', 'requirements.txt', 'LinX.svg', 'LinX.png', 'LinX.ico', 'LinX.icns', 'LinX 远程模型管理.app/Contents/Info.plist', 'LinX 远程模型管理.app/Contents/MacOS/launch', 'LinX 远程模型管理.app/Contents/Resources/LinX.icns')
 
+PUBLIC_ASSET_FILES = ('assets/fonts/Inter.woff2', 'assets/fonts/NotoSansSC.woff2', 'assets/fonts/JetBrainsMono.woff2', 'assets/fonts/Inter-OFL.txt', 'assets/fonts/NotoSansSC-OFL.txt', 'assets/fonts/JetBrainsMono-OFL.txt', 'assets/brand/lockup_color.svg', 'assets/brand/lockup_white.svg')
+PACKAGE_FILES += PUBLIC_ASSET_FILES
+PACKAGE_FILES += ('browser_shell.py',)
+
 def export_package(s, target):
     # Mark Unix permissions explicitly: Windows-built ZIPs must preserve the Mac launcher executable bit.
     with zipfile.ZipFile(target, 'w', zipfile.ZIP_DEFLATED) as z:

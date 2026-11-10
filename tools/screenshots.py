@@ -43,7 +43,7 @@ MONITOR = dict(
     ],
     disks=[
         dict(mount='/', size_kb=204800000, used_kb=91200000, available_kb=113600000, percent=45),
-        dict(mount='/disk2', size_kb=2048000000, used_kb=1210000000, available_kb=838000000, percent=59),
+        dict(mount='/data', focus=True, related_paths=[dict(kind='user_home',path='/data/developer')], size_kb=2048000000, used_kb=1210000000, available_kb=838000000, percent=59),
     ],
 )
 
@@ -63,6 +63,10 @@ def main():
         url = request.request.url
         if url == 'https://linx.test/':
             return request.fulfill(body=source, content_type='text/html')
+        if url.startswith('https://linx.test/assets/'):
+            name=url[len('https://linx.test/') :]
+            assert name in manager.PUBLIC_ASSET_FILES
+            return request.fulfill(body=(ROOT/name).read_bytes(), content_type='font/woff2' if name.endswith('.woff2') else 'image/svg+xml')
         if url == 'https://linx.test/api':
             payload = request.request.post_data_json
             op = payload['op']
@@ -106,16 +110,17 @@ def main():
         page.goto('https://linx.test/')
         page.wait_for_function('S.loaded && !S.busy')
         page.evaluate('clearToast()')
+        page.evaluate('document.fonts.ready')
         for mode in ('light', 'dark'):
             page.evaluate('(m)=>{appearanceMode=m;applyAppearance(m)}', mode)
             page.wait_for_timeout(400)
-            page.screenshot(path=str(assets/('overview-'+mode+'.png')), full_page=True)
+            page.screenshot(path=str(assets/('overview-'+mode+'.png')), full_page=True, animations='disabled')
         page.evaluate("appearanceMode='light';applyAppearance('light');S.page='connection';render()")
         page.evaluate("S.environment={tool:'Codex',state:'running',events:[{phase:'download',transfer:true,message:'婕旂ず锛氭鍦ㄤ紶杈撳凡鏍￠獙鐨勫畼鏂瑰寘',downloaded_bytes:96*1048576,total_bytes:160*1048576}]};renderEnvironment()")
-        page.screenshot(path=str(assets/'connection-updates.png'), full_page=True)
+        page.screenshot(path=str(assets/'connection-updates.png'), full_page=True, animations='disabled')
         page.evaluate('S.monitor=' + json.dumps(MONITOR, ensure_ascii=False) + ";S.page='monitor';render()")
         page.wait_for_timeout(300)
-        page.screenshot(path=str(assets/'server-monitor.png'), full_page=True)
+        page.screenshot(path=str(assets/'server-monitor.png'), full_page=True, animations='disabled')
         page.locator('.section-rail button').nth(1).click()
         page.wait_for_timeout(250)
         assert page.locator('#monitor-processes h2').is_visible()
@@ -125,12 +130,12 @@ def main():
         page.evaluate('window.scrollTo(0, 0)')
         assert page.evaluate('scrollY < 2')
         page.evaluate("S.page='providers';render();openWizard(S.profiles[0]);S.models=" + repr(MODELS) + ';S.stage=2;drawWizard()')
-        page.locator('.modal').screenshot(path=str(assets/'model-selection.png'))
+        page.locator('.modal').screenshot(path=str(assets/'model-selection.png'), animations='disabled')
         page.evaluate('closeWizard()')
         page.evaluate('S.monitor=' + json.dumps(MONITOR, ensure_ascii=False) + ";S.page='monitor';render()")
         page.set_viewport_size({'width':390, 'height':844})
         assert page.locator('.section-rail').evaluate("e=>getComputedStyle(e).overflowX==='auto'")
-        page.screenshot(path=str(assets/'mobile.png'), full_page=True)
+        page.screenshot(path=str(assets/'mobile.png'), full_page=True, animations='disabled')
         for width in (320, 390, 768, 1024, 1440, 1920):
             page.set_viewport_size({'width':width, 'height':900})
             for section in ('providers', 'connection', 'tunnel', 'help'):
