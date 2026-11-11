@@ -260,7 +260,7 @@ html[data-theme=dark] .linx-maker-lockup .linx-maker-white{display:block}
 :root{--text-xs:13px;--text-sm:14px;--text-base:16px;--text-lg:18px;--text-section:21px;--metric-blue:#126ac4;--metric-purple:#7651bd;--metric-green:#13795b;--metric-warn:#9a620b;--metric-danger:#c43849}
 html[data-theme=dark]{--metric-blue:#72b5ff;--metric-purple:#c2a0ff;--metric-green:#62d5b0;--metric-warn:#f1c36c;--metric-danger:#ff8b98}
 .content{max-width:none;margin:0;padding:32px clamp(24px,2vw,40px) 48px}
-.content:has(.monitor-page){padding-right:128px}
+.content:has(.section-rail){padding-right:128px}
 .section-rail{width:100px;right:16px;padding:7px}
 .section-rail button{padding:10px 7px;font-size:13px}
 body{font-size:16px}.nav button{font-size:15px}.navlabel{font-size:13px}
@@ -283,10 +283,10 @@ button,.field input,.field select{font-size:14px}.field small,.notice,.info-list
 .monitor-bar i[data-level=warning]{background:var(--metric-warn)}
 .monitor-bar i[data-level=critical]{background:var(--metric-danger)}
 .activefacts>div:nth-child(1) dd{color:var(--metric-blue)}.activefacts>div:nth-child(2) dd{color:var(--metric-purple)}
-@media(max-width:1180px){.content{padding:28px 24px 40px}.content:has(.monitor-page){padding-right:116px}.section-rail{right:10px;width:94px}.monitor-summary b{font-size:23px}}
+@media(max-width:1180px){.content{padding:28px 24px 40px}.content:has(.section-rail){padding-right:116px}.section-rail{right:10px;width:94px}.monitor-summary b{font-size:23px}}
 @media(max-width:980px){.nav button{font-size:14px}.monitor-summary{gap:12px}.monitor-summary article{padding:18px 16px}.monitor-summary b{font-size:21px}}
-@media(max-width:640px){body{font-size:15px}.content,.content:has(.monitor-page){padding:24px 18px 90px}.nav button{font-size:12px}.heading h1{font-size:28px}.heading p{font-size:14px}.section-rail{width:auto;right:10px;left:10px}.section-rail button{font-size:13px;padding:9px 12px}.monitor-summary b{font-size:25px}.monitor-table-scroll table{font-size:13px}.monitor-table-scroll th{font-size:12px}.topbar .connection{padding:7px 8px;gap:7px}.topbar #header-server{font-size:12px}.topbar #connectiontext{font-size:11px}}
-@media(max-width:360px){.content,.content:has(.monitor-page){padding-left:14px;padding-right:14px}.topbar .header-tools{gap:5px}.topbar .header-action{width:30px;padding:6px}}
+@media(max-width:640px){body{font-size:15px}.content,.content:has(.section-rail){padding:24px 18px 90px}.nav button{font-size:12px}.heading h1{font-size:28px}.heading p{font-size:14px}.section-rail{width:auto;right:10px;left:10px}.section-rail button{font-size:13px;padding:9px 12px}.monitor-summary b{font-size:25px}.monitor-table-scroll table{font-size:13px}.monitor-table-scroll th{font-size:12px}.topbar .connection{padding:7px 8px;gap:7px}.topbar #header-server{font-size:12px}.topbar #connectiontext{font-size:11px}}
+@media(max-width:360px){.content,.content:has(.section-rail){padding-left:14px;padding-right:14px}.topbar .header-tools{gap:5px}.topbar .header-action{width:30px;padding:6px}}
 
 /* Balanced sidebar, grouped theme selection and clear resource identities. */
 .sidebar{padding-top:34px;padding-bottom:24px}

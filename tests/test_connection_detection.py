@@ -53,10 +53,34 @@ class RemoteDetection(unittest.TestCase):
 
     def test_open_ssh_terminal_uses_a_defined_batch_argument(self):
         with patch.object(manager, "ssh_base", return_value=(["ssh"], "developer@server.example")) as base, \
-             patch.object(manager.subprocess, "Popen") as popen:
+             patch.object(manager.subprocess, "Popen") as popen, \
+             patch.object(manager.os, 'name', 'nt'), \
+             patch.object(manager.subprocess, 'CREATE_NEW_CONSOLE', 16, create=True):
             manager.open_ssh_terminal(dict(manager.DEFAULT, host="server.example", user="developer"))
         base.assert_called_once()
-        popen.assert_called_once()
+        popen.assert_called_once_with(['ssh', 'developer@server.example'], creationflags=16)
+
+    def test_linux_ssh_terminal_returns_command_without_launching(self):
+        with patch.object(manager, 'ssh_base', return_value=(['ssh'], 'developer@server.example')), \
+             patch.object(manager.os, 'name', 'posix'), \
+             patch.object(manager.sys, 'platform', 'linux'), \
+             patch.object(manager.subprocess, 'Popen') as popen:
+            result=manager.open_ssh_terminal(dict(manager.DEFAULT))
+        self.assertEqual(result, 'ssh developer@server.example')
+        popen.assert_not_called()
+
+    def test_mac_ssh_terminal_opens_script_without_running_ssh(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            state=Path(tmp)
+            with patch.object(manager, 'STATE', state), \
+                 patch.object(manager, 'ssh_base', return_value=(['ssh'], 'developer@server.example')), \
+                 patch.object(manager.os, 'name', 'posix'), \
+                 patch.object(manager.sys, 'platform', 'darwin'), \
+                 patch.object(manager.subprocess, 'run') as run:
+                manager.open_ssh_terminal(dict(manager.DEFAULT))
+            script=next(state.glob('ssh-login-*.command'))
+            self.assertIn('exec ssh developer@server.example', script.read_text())
+            run.assert_called_once_with(['/usr/bin/open','-a','Terminal',str(script)],check=True)
 
     def test_password_detection_uses_accept_new_without_batch_mode(self):
         settings = dict(manager.DEFAULT, connection_source='manual', host='server.example', user='developer', auth_method='password')

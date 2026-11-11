@@ -11,12 +11,12 @@ import manager
 MODELS = ['gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex', 'deepseek-v3.2', 'deepseek-reasoner', 'custom-research-model']
 SETTINGS = dict(manager.DEFAULT, alias='demo-server', user='developer',
                 cindy_host='demo-server', home='/home/developer/.xdt-server/v1/codex-home')
-HOSTS = {'hosts':[{'id':'demo-server', 'name':'婕旂ず宸ヤ綔绌洪棿', 'hostname':'server.example',
+HOSTS = {'hosts':[{'id':'demo-server', 'name':'演示工作空间', 'hostname':'server.example',
                    'user':'developer', 'port':22, 'managed_by_cindy':True}], 'warnings':[]}
 PROFILES = [
     dict(id='demo-direct', name='Demo Relay', mode='direct', base_url='https://api.example/v1',
          model=MODELS[0], selected_models=MODELS, has_key=True, context_window=262144, context_windows={m:262144 for m in MODELS}),
-    dict(id='demo-tunnel', name='鏈満 Sub2API', mode='tunnel', base_url='http://127.0.0.1:18765/v1',
+    dict(id='demo-tunnel', name='本机 Sub2API', mode='tunnel', base_url='http://127.0.0.1:18765/v1',
          model=MODELS[0], selected_models=MODELS[:3], has_key=True, context_window=262144, context_windows={m:262144 for m in MODELS[:3]}),
 ]
 UPDATES = dict(state='done', items=[
@@ -111,12 +111,15 @@ def main():
         page.wait_for_function('S.loaded && !S.busy')
         page.evaluate('clearToast()')
         page.evaluate('document.fonts.ready')
+        assert page.locator('#header-server').inner_text() == '演示工作空间'
+        assert page.locator('#servermini').inner_text() == '演示工作空间'
+        assert '本机 Sub2API' in page.locator('#content').inner_text()
         for mode in ('light', 'dark'):
             page.evaluate('(m)=>{appearanceMode=m;applyAppearance(m)}', mode)
             page.wait_for_timeout(400)
             page.screenshot(path=str(assets/('overview-'+mode+'.png')), full_page=True, animations='disabled')
         page.evaluate("appearanceMode='light';applyAppearance('light');S.page='connection';render()")
-        page.evaluate("S.environment={tool:'Codex',state:'running',events:[{phase:'download',transfer:true,message:'婕旂ず锛氭鍦ㄤ紶杈撳凡鏍￠獙鐨勫畼鏂瑰寘',downloaded_bytes:96*1048576,total_bytes:160*1048576}]};renderEnvironment()")
+        page.evaluate("S.environment={tool:'Codex',state:'running',events:[{phase:'download',transfer:true,message:'演示：正在传输已校验的官方包',downloaded_bytes:96*1048576,total_bytes:160*1048576}]};renderEnvironment()")
         page.screenshot(path=str(assets/'connection-updates.png'), full_page=True, animations='disabled')
         page.evaluate('S.monitor=' + json.dumps(MONITOR, ensure_ascii=False) + ";S.page='monitor';render()")
         page.wait_for_timeout(300)
@@ -138,9 +141,11 @@ def main():
         page.screenshot(path=str(assets/'mobile.png'), full_page=True, animations='disabled')
         for width in (320, 390, 768, 1024, 1440, 1920):
             page.set_viewport_size({'width':width, 'height':900})
-            for section in ('providers', 'connection', 'tunnel', 'help'):
+            for section in ('providers', 'connection', 'tunnel', 'help', 'monitor'):
                 page.evaluate('(p)=>{S.page=p;render()}', section)
                 assert page.evaluate('document.documentElement.scrollWidth <= innerWidth+1'), (width, section)
+                if width > 640 and page.locator('.section-rail').count():
+                    assert page.evaluate("()=>{const nav=document.querySelector('.section-rail').getBoundingClientRect(),content=document.querySelector('#content'),edge=content.getBoundingClientRect().right-parseFloat(getComputedStyle(content).paddingRight);return nav.left-edge>=8}"), (width, section, 'navigation overlaps content')
         # Verify a blank public install stays on local connection setup, without SSH.
         empty = True
         calls.clear()
