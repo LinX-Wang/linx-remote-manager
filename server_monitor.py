@@ -36,7 +36,8 @@ REMOTE_SCRIPT = r"""
 printf '__GPU__\n'
 command -v nvidia-smi >/dev/null 2>&1 && timeout 8 nvidia-smi --query-gpu=index,name,utilization.gpu,memory.used,memory.total,temperature.gpu --format=csv,noheader,nounits 2>&1 || printf 'nvidia-smi unavailable\n'
 printf '__PMON__\n'
-command -v nvidia-smi >/dev/null 2>&1 && timeout 8 nvidia-smi pmon -c 1 -s um 2>&1 || :
+LINX_PMON=$(command -v nvidia-smi >/dev/null 2>&1 && timeout 8 nvidia-smi pmon -c 1 -s um 2>/dev/null)
+printf '%s\n' "$LINX_PMON"
 printf '__MEM__\n'
 free -m 2>&1
 printf '__LOAD__\n'
@@ -48,9 +49,42 @@ df -Pk -x tmpfs -x devtmpfs 2>/dev/null
 printf '__PATHS__\n'
 LINX_MONITOR_HOME=__LINX_CODEX_HOME__ python3 -c __LINX_DISK_PATH_SCRIPT__ 2>/dev/null || :
 printf '__PS__\n'
+LINX_PS=$(
 ps -eo user=,pid=,pcpu=,pmem=,comm=,args= --sort=-pcpu 2>&1 | head -n 300
 ps -u "$(id -un)" -o user=,pid=,pcpu=,pmem=,comm=,args= --sort=-pcpu 2>&1
+LINX_GPU_PIDS=$(printf '%s\n' "$LINX_PMON" | awk '$1 ~ /^[0-9]+$/ && $2 ~ /^[0-9]+$/ {print $2}' | sort -un | paste -sd, -)
+if [ -n "$LINX_GPU_PIDS" ]; then
+    ps -p "$LINX_GPU_PIDS" -o user=,pid=,pcpu=,pmem=,comm=,args= 2>/dev/null || :
+fi
+)
+printf '%s\n' "$LINX_PS"
+printf '__TIMING__\n'
+printf '%s\n' "$LINX_PS" | python3 -c __LINX_TIMING_SCRIPT__ 2>/dev/null || :
 """
+
+# One small /proc read per process; never attach, signal, or open a process FD.
+TIMING_SCRIPT = r'''
+import json, os, sys, time
+clock = os.sysconf('SC_CLK_TCK')
+with open('/proc/uptime') as stream:
+    uptime = float(stream.read().split()[0])
+now = time.time()
+rows = {}
+names = dict.fromkeys(line.split()[1] for line in sys.stdin if len(line.split()) > 1)
+for name in list(names)[:2000]:
+    if not name.isdigit():
+        continue
+    try:
+        with open('/proc/' + name + '/stat') as stream:
+            fields = stream.read().rsplit(')', 1)[1].split()
+        ticks = int(fields[19])
+        elapsed = max(0, uptime - ticks / clock)
+        rows[name] = dict(started_at=int(now - elapsed), elapsed_seconds=int(elapsed),
+                          start_ticks=str(ticks))
+    except (OSError, ValueError, IndexError):
+        pass
+print(json.dumps(dict(sampled_at=int(now), processes=rows)))
+'''
 
 def _number(value: str) -> float | int | None:
     try:
@@ -60,7 +94,7 @@ def _number(value: str) -> float | int | None:
         return None
 
 def _sections(raw: str) -> dict[str, str]:
-    names = ("GPU", "PMON", "MEM", "LOAD", "CPU", "DISK", "PATHS", "PS")
+    names = ("GPU", "PMON", "MEM", "LOAD", "CPU", "DISK", "PATHS", "PS", "TIMING")
     found = {}
     for i, name in enumerate(names):
         start = raw.find("__" + name + "__")
@@ -102,6 +136,19 @@ def parse_snapshot(raw: str) -> dict[str, Any]:
             continue
         gpus.append({"index": int(row[0]), "name": row[1].strip(), "utilization": _number(row[2]) or 0, "memory_used": _number(row[3]) or 0, "memory_total": _number(row[4]) or 0, "temperature": _number(row[5]), "processes": []})
     processes = _processes(part["PS"])
+    try:
+        timing = json.loads(part['TIMING'] or '{}')
+        timing = timing.get('processes', {})
+        if not isinstance(timing, dict):
+            timing = {}
+    except (ValueError, TypeError, AttributeError):
+        timing = {}
+    for pid, proc in processes.items():
+        row = timing.get(pid, {})
+        if (isinstance(row, dict) and type(row.get('started_at')) is int
+                and row['started_at'] > 0 and type(row.get('elapsed_seconds')) is int
+                and row['elapsed_seconds'] >= 0 and str(row.get('start_ticks', '')).isdigit()):
+            proc.update({key: row[key] for key in ('started_at', 'elapsed_seconds', 'start_ticks')})
     for line in part["PMON"].splitlines():
         fields = line.split()
         if len(fields) < 3 or not fields[0].isdigit() or not fields[1].isdigit():
@@ -162,7 +209,7 @@ class Monitor:
             try:
                 # Pass bytes so Windows does not translate LF to CRLF before SSH
                 # forwards the script to POSIX sh (CR characters break shell syntax).
-                script = REMOTE_SCRIPT.replace('__LINX_CODEX_HOME__', shlex.quote(settings.get('home', ''))).replace('__LINX_DISK_PATH_SCRIPT__', shlex.quote(DISK_PATH_SCRIPT))
+                script = REMOTE_SCRIPT.replace('__LINX_CODEX_HOME__', shlex.quote(settings.get('home', ''))).replace('__LINX_DISK_PATH_SCRIPT__', shlex.quote(DISK_PATH_SCRIPT)).replace('__LINX_TIMING_SCRIPT__', shlex.quote(TIMING_SCRIPT))
                 result = manager.ssh_run(settings, ssh + [destination, "sh -s"], input=script.encode("utf-8"), capture_output=True, timeout=28, **manager.HIDDEN)
                 if result.returncode:
                     error = result.stderr or result.stdout or "SSH 连接失败"

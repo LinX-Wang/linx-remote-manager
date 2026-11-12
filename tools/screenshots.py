@@ -46,6 +46,8 @@ MONITOR = dict(
         dict(mount='/data', focus=True, related_paths=[dict(kind='user_home',path='/data/developer')], size_kb=2048000000, used_kb=1210000000, available_kb=838000000, percent=59),
     ],
 )
+for row in MONITOR['processes'] + [p for g in MONITOR['gpus'] for p in g['processes']]:
+    row.update(started_at=MONITOR['collected_at']-3661, elapsed_seconds=3661, start_ticks='12000')
 
 
 def main():
@@ -63,10 +65,10 @@ def main():
         url = request.request.url
         if url == 'https://linx.test/':
             return request.fulfill(body=source, content_type='text/html')
-        if url.startswith('https://linx.test/assets/'):
+        if url.startswith('https://linx.test/assets/') or url in ('https://linx.test/tools_ui.js','https://linx.test/tools_ui.css'):
             name=url[len('https://linx.test/') :]
             assert name in manager.PUBLIC_ASSET_FILES
-            return request.fulfill(body=(ROOT/name).read_bytes(), content_type='font/woff2' if name.endswith('.woff2') else 'image/svg+xml')
+            return request.fulfill(body=(ROOT/name).read_bytes(), content_type='font/woff2' if name.endswith('.woff2') else 'text/javascript' if name.endswith('.js') else 'text/css' if name.endswith('.css') else 'image/svg+xml')
         if url == 'https://linx.test/api':
             payload = request.request.post_data_json
             op = payload['op']
@@ -85,6 +87,20 @@ def main():
                 data = HOSTS
             elif op == 'monitor_status':
                 data = MONITOR
+            elif op == 'monitor_history':
+                import time,math
+                now=int(time.time())
+                data=dict(samples=[dict(at=now-i*5,gpus=[dict(g,index=g['index'],utilization=max(0,min(100,g['utilization']+15*math.sin(i/4)+5*math.sin(i/9))),memory_used=g['memory_used']*(1+.04*math.sin(i/8)),temperature=g['temperature']+3*math.sin(i/10)) for g in MONITOR['gpus']]) for i in reversed(range(60)) if i not in range(31,36)])
+            elif op == 'watch_status':
+                data=dict(watches=[],events=[],enabled=False)
+            elif op == 'watch_add':
+                data=dict(watches=[dict(id='demo-watch',pid=int(payload['pid']),ticks=payload['ticks'],user=payload['user'],state='running')],events=[])
+            elif op == 'watch_remove':
+                data=dict(watches=[],events=[])
+            elif op == 'connection_diagnostics':
+                data=dict(checked_at=1792419000,rows=[dict(name='SSH / Python',status='ok',detail='只读检查通过'),dict(name='远端兼容桥',status='error',detail='演示故障：服务未响应')])
+            elif op == 'files_list':
+                data=dict(path='/home/developer',parent='/home',offset=0,more=False,entries=[dict(name='results',path='/home/developer/results',kind='directory',size=4096,modified_at=1792419000)]+[dict(name=name,path='/home/developer/'+name,kind='file',size=128,modified_at=1792419000) for name in ('README.md','slides.pptx','metrics.csv','train.py','config.yaml','preview.png','weights.safetensors','example.txt')])
             elif op in ('updates_check', 'updates_status'):
                 if empty:
                     raise AssertionError('First run attempted update check')
@@ -122,7 +138,50 @@ def main():
         page.evaluate("S.environment={tool:'Codex',state:'running',events:[{phase:'download',transfer:true,message:'演示：正在传输已校验的官方包',downloaded_bytes:96*1048576,total_bytes:160*1048576}]};renderEnvironment()")
         page.screenshot(path=str(assets/'connection-updates.png'), full_page=True, animations='disabled')
         page.evaluate('S.monitor=' + json.dumps(MONITOR, ensure_ascii=False) + ";S.page='monitor';render()")
+        page.evaluate('pollTools()')
         page.wait_for_timeout(300)
+        assert page.locator('#monitor-processes th').count() == 8
+        assert page.locator('#monitor-processes tbody tr').first.locator('td').nth(4).inner_text() != '—'
+        assert '1小时' in page.locator('#monitor-processes tbody tr').first.locator('td').nth(5).inner_text()
+        assert page.locator('#monitor-progress').count() == 0
+        page.evaluate('S.monitor.collected_at=Date.now()/1000')
+        gpu_height=page.locator('.monitor-gpus').bounding_box()['height']
+        page.locator('[data-gpu-trend]').first.click()
+        page.locator('[data-chart-minutes="30"]').first.click()
+        assert page.locator('#trend-chart svg').count() == 1
+        assert page.locator('[data-trend-metric]').count() == 3
+        assert page.locator('.trend-area').count()==2
+        assert page.locator('.trend-line').count()==2
+        assert page.locator('.trend-statistics').is_visible()
+        plot=page.locator('.trend-interactive');box=plot.bounding_box()
+        page.mouse.move(box['x']+box['width']*.65,box['y']+box['height']*.4)
+        assert page.locator('.trend-tooltip').is_visible()
+        assert '%' in page.locator('.trend-tooltip').inner_text()
+        assert page.locator('.trend-cursor').get_attribute('visibility')=='visible'
+        page.mouse.move(1,1)
+        assert page.locator('.trend-tooltip').is_hidden()
+        plot.focus();page.keyboard.press('ArrowLeft')
+        assert page.locator('.trend-tooltip').is_visible()
+        page.locator('[data-chart-minutes="30"]').focus()
+        page.evaluate('document.activeElement.blur()')
+        assert abs(page.locator('.monitor-gpus').bounding_box()['height']-gpu_height)<1
+        assert page.locator('.monitor-gpus .trend-plot').count()==0
+        for mode in ('light','dark'):
+            page.evaluate('(m)=>applyAppearance(m)',mode)
+            page.locator('.trend-dialog').screenshot(path=str(assets/('gpu-trends-'+mode+'.png')),animations='disabled')
+        page.locator('[data-trend-gpu="1"]').click()
+        assert 'GPU 1' in page.locator('.trend-header').inner_text()
+        page.locator('[data-trend-metric="temperature"]').click()
+        assert page.locator('.trend-plot').get_attribute('data-metric')=='temperature'
+        page.keyboard.press('Escape')
+        assert page.locator('#tools-trend-host').count()==0
+        page.evaluate("applyAppearance('light')")
+        page.locator('[data-watch-pid="240186"]').first.click()
+        page.wait_for_function('Tools.watches.length === 1')
+        assert page.locator('[data-watch-pid="240186"]').first.get_attribute('aria-pressed') == 'true'
+        page.locator('[data-watch-pid="240186"]').first.click()
+        page.wait_for_function('Tools.watches.length === 0')
+        page.evaluate('render();clearToast()')
         page.screenshot(path=str(assets/'server-monitor.png'), full_page=True, animations='disabled')
         page.locator('.section-rail button').nth(1).click()
         page.wait_for_timeout(250)
@@ -135,17 +194,36 @@ def main():
         page.evaluate("S.page='providers';render();openWizard(S.profiles[0]);S.models=" + repr(MODELS) + ';S.stage=2;drawWizard()')
         page.locator('.modal').screenshot(path=str(assets/'model-selection.png'), animations='disabled')
         page.evaluate('closeWizard()')
+        page.evaluate("navigate('connection')")
+        page.locator('#tools-diagnose').click()
+        page.wait_for_function('Tools.diagnostics && !Tools.diagnosing')
+        assert page.locator('.diagnostic-state[data-state=error]').count() == 1
+        page.evaluate('clearToast()')
+        page.screenshot(path=str(assets/'connection-diagnostics.png'), full_page=True, animations='disabled')
+        page.evaluate("navigate('files')")
+        page.wait_for_function('Tools.files && !Tools.fileBusy')
+        assert 'example.txt' in page.locator('.files-table').inner_text()
+        for kind in ('folder','markdown','slides','sheet','code','config','image','model','text'):
+            assert page.locator('[data-file-type="'+kind+'"]').count()>=1,kind
+        assert page.evaluate("fileKind({name:'SLIDES.PPTX',kind:'file'}).kind")=='slides'
+        assert page.evaluate("fileKind({name:'unknown.zzz',kind:'file'}).kind")=='generic'
+        page.evaluate('clearToast()')
+        page.screenshot(path=str(assets/'remote-files.png'),full_page=True,animations='disabled')
         page.evaluate('S.monitor=' + json.dumps(MONITOR, ensure_ascii=False) + ";S.page='monitor';render()")
         page.set_viewport_size({'width':390, 'height':844})
         assert page.locator('.section-rail').evaluate("e=>getComputedStyle(e).overflowX==='auto'")
         page.screenshot(path=str(assets/'mobile.png'), full_page=True, animations='disabled')
         for width in (320, 390, 768, 1024, 1440, 1920):
             page.set_viewport_size({'width':width, 'height':900})
-            for section in ('providers', 'connection', 'tunnel', 'help', 'monitor'):
+            for section in ('providers', 'connection', 'tunnel', 'help', 'monitor', 'files'):
                 page.evaluate('(p)=>{S.page=p;render()}', section)
                 assert page.evaluate('document.documentElement.scrollWidth <= innerWidth+1'), (width, section)
                 if width > 640 and page.locator('.section-rail').count():
                     assert page.evaluate("()=>{const nav=document.querySelector('.section-rail').getBoundingClientRect(),content=document.querySelector('#content'),edge=content.getBoundingClientRect().right-parseFloat(getComputedStyle(content).paddingRight);return nav.left-edge>=8}"), (width, section, 'navigation overlaps content')
+            page.evaluate("S.page='monitor';render();openTrend(0)")
+            assert page.locator('.trend-dialog').evaluate('e=>e.scrollWidth<=e.clientWidth+1'),width
+            assert page.locator('.trend-dialog').bounding_box()['width']<=width,width
+            page.evaluate('closeTrend()')
         # Verify a blank public install stays on local connection setup, without SSH.
         empty = True
         calls.clear()
@@ -155,7 +233,7 @@ def main():
         assert 'list' not in calls and 'updates_check' not in calls
         assert not errors, errors
         browser.close()
-    print('Six fictional screenshots generated; desktop and narrow-screen section navigation, 24 layouts and isolated first-run behavior passed.')
+    print('Ten fictional screenshots generated; trend dialog, file icons, 36 page layouts and isolated first-run behavior passed.')
 
 
 if __name__ == '__main__':

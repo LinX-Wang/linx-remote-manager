@@ -375,7 +375,27 @@ def operation(data):
     if op == 'cindy_connections': return core.cindy_connections()
     if op == 'monitor_status':
         import server_monitor
-        return server_monitor.monitor.collect(s, force=bool(data.get('force')))
+        from monitor_features import features
+        result=server_monitor.monitor.collect(s, force=bool(data.get('force')))
+        features.record(s,result)
+        return result
+    if op in ('monitor_history','watch_status','watch_add','watch_remove'):
+        from monitor_features import features
+        if op=='monitor_history':return features.history(s)
+        if op=='watch_add':return features.add(s,data.get('pid'),str(data.get('ticks','')),data.get('user',''))
+        if op=='watch_remove':features.remove(data.get('id'))
+        return features.status(s)
+    if op=='connection_diagnostics':
+        import remote_tools
+        return remote_tools.diagnostics(s)
+    if op=='files_list':
+        import remote_tools
+        return remote_tools.list_files(s,data.get('path',''),data.get('offset',0))
+    if op in ('transfer_begin','transfer_status','transfer_discard'):
+        from remote_tools import transfers
+        if op=='transfer_status':return transfers.status(data.get('id'))
+        if op=='transfer_discard':return transfers.discard(data.get('id'))
+        return transfers.begin(s,data.get('direction'),path=data.get('path',''),directory=data.get('directory',''),name=data.get('name',''),size=data.get('size',0))
     if op == 'connection_detect':
         draft={k:data.get('settings',s).get(k,core.DEFAULT[k]) for k in core.DEFAULT}
         if draft.get('auth_method')=='password':core.remember_ssh_password(draft,data.get('ssh_password'))
@@ -499,10 +519,10 @@ def prepare_server(open_browser):
         def do_GET(self):
             if not self.host_ok():return self.send(404,b'{}')
             if self.path=='/favicon.ico':return self.send(200,(core.ROOT/'LinX.ico').read_bytes(),'image/x-icon')
-            if self.path.startswith('/assets/'):
+            if self.path.startswith('/assets/') or self.path in ('/tools_ui.js','/tools_ui.css'):
                 name=self.path[1:]
                 if name not in core.PUBLIC_ASSET_FILES:return self.send(404,b'{}')
-                typ='font/woff2' if name.endswith('.woff2') else 'image/svg+xml' if name.endswith('.svg') else 'text/plain; charset=utf-8'
+                typ='font/woff2' if name.endswith('.woff2') else 'text/javascript; charset=utf-8' if name.endswith('.js') else 'text/css; charset=utf-8' if name.endswith('.css') else 'image/svg+xml' if name.endswith('.svg') else 'text/plain; charset=utf-8'
                 return self.send(200,(core.ROOT/name).read_bytes(),typ)
             if self.path!='/':return self.send(404,b'{}')
             html=(core.ROOT/'manager_ui.html').read_text(encoding='utf-8')
@@ -510,8 +530,36 @@ def prepare_server(open_browser):
             self.send(200,html.encode('utf-8'),'text/html; charset=utf-8')
         def do_POST(self):
             expected='http://127.0.0.1:'+str(self.server.server_port)
-            if self.path!='/api' or not self.host_ok() or self.headers.get('Origin',expected)!=expected or not secrets.compare_digest(self.headers.get('X-Kit-Token',''),token):
+            if self.path not in ('/api','/transfer/upload','/transfer/download') or not self.host_ok() or self.headers.get('Origin',expected)!=expected or not secrets.compare_digest(self.headers.get('X-Kit-Token',''),token):
                 return self.send(403,b'{"ok":false}')
+            if self.path.startswith('/transfer/'):
+                from remote_tools import transfers
+                job=None
+                try:
+                    key=self.headers.get('X-Transfer-Id','')
+                    if self.path=='/transfer/upload':
+                        self.connection.settimeout(60)
+                        length=int(self.headers.get('Content-Length','-1'))
+                        if not 0<=length<=100*1024**3:raise ValueError('上传大小无效')
+                        result=transfers.upload(key,self.rfile,length)
+                        return self.send(200,json.dumps(dict(ok=True,data=result),ensure_ascii=False).encode())
+                    job=transfers.take(key)
+                    with open(job['local'],'rb') as source:
+                        self.send_response(200)
+                        self.send_header('Content-Type','application/octet-stream')
+                        self.send_header('Content-Length',str(job['total']))
+                        self.send_header('Content-Disposition',"attachment; filename*=UTF-8''"+urllib.parse.quote(job['name'],safe=''))
+                        self.send_header('Cache-Control','no-store');self.send_header('X-Content-Type-Options','nosniff');self.end_headers()
+                        import shutil
+                        shutil.copyfileobj(source,self.wfile,1024*1024)
+                    return
+                except (BrokenPipeError,ConnectionResetError,ConnectionAbortedError):return
+                except Exception:
+                    if job is None:return self.send(400,json.dumps(dict(ok=False,error='文件传输未就绪，请刷新后重试'),ensure_ascii=False).encode())
+                    return
+                finally:
+                    if job is not None:
+                        transfers.update(job,state='done')
             if self.headers.get_content_type()!='application/json':return self.send(415,b'{"ok":false}')
             try:
                 length=int(self.headers.get('Content-Length','0'))
@@ -536,6 +584,13 @@ def prepare_server(open_browser):
             except (BrokenPipeError,ConnectionResetError,ConnectionAbortedError):pass
     server=ThreadingHTTPServer(('127.0.0.1',0),Handler)
     server.daemon_threads=True
+    from monitor_features import features
+    feature_stop=threading.Event()
+    previous_close=server.server_close
+    def close_features():
+        feature_stop.set();previous_close()
+    server.server_close=close_features
+    threading.Thread(target=features.loop,args=(feature_stop,),daemon=True).start()
     if os.name=='nt':
         stop=threading.Event()
         close=server.server_close

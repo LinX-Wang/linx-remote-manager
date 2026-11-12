@@ -24,6 +24,9 @@ PACKAGE_FILES = ('connection_detection.py', 'download_bridge.py', 'cindy_connect
 PUBLIC_ASSET_FILES = ('assets/fonts/Inter.woff2', 'assets/fonts/NotoSansSC.woff2', 'assets/fonts/JetBrainsMono.woff2', 'assets/fonts/Inter-OFL.txt', 'assets/fonts/NotoSansSC-OFL.txt', 'assets/fonts/JetBrainsMono-OFL.txt', 'assets/brand/lockup_color.svg', 'assets/brand/lockup_white.svg')
 PACKAGE_FILES += PUBLIC_ASSET_FILES
 PACKAGE_FILES += ('browser_shell.py',)
+PACKAGE_FILES += ('remote_tools.py', 'monitor_features.py')
+PUBLIC_ASSET_FILES += ('tools_ui.js', 'tools_ui.css')
+PACKAGE_FILES += ('tools_ui.js', 'tools_ui.css')
 
 def export_package(s, target):
     # Mark Unix permissions explicitly: Windows-built ZIPs must preserve the Mac launcher executable bit.

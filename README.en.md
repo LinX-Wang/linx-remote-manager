@@ -47,11 +47,15 @@ This is **an independent third-party project by LinX**, not an official Cindy or
 | Cindy connection discovery | Prefer existing Cindy SSH configurations, with manual connections also supported |
 | SSH authentication | Manual connections support runtime-only passwords, SSH Agent, and private-key setup guidance |
 | Server connection and state | Reuse Cindy's SSH configuration or connect manually; use section navigation to inspect GPU, system processes, disks, memory, and load, with GPU users and PIDs neatly arranged and common credentials redacted from process arguments |
+| Connection diagnostics | Read-only checks for SSH, the bridge, provider and local tunnels |
+| GPU trends | Background sampling about every 5 seconds, independent of the active page; interactive 5 / 30 minute charts |
+| Process timing and alerts | PID creation time, elapsed time and identity-aware exit alerts without controlling tasks |
+| Remote files | File-type icons, streamed single-file transfers and SHA256 verification; uploads never overwrite |
 | Automatic discovery | Check Codex installations, server port availability and local Sub2API on connect, with manual overrides |
 | Per-user environment | Check gawk and the complete Codex installation; skip tools that already work |
 | Visual updates | Check versions and install on demand, with progress inside the relevant tool card |
 | Download fallback | When the server cannot reach GitHub, try downloading locally and transferring over SSH |
-| Light and dark themes | Switch with the sun/moon button, or follow local time automatically |
+| Light and dark themes | Day / Night / Follow time segments with a matching Windows title bar |
 | Computer migration | Shared Windows/macOS core, with a personal migration export |
 
 ### Interface preview
@@ -64,9 +68,24 @@ This is **an independent third-party project by LinX**, not an official Cindy or
 
 ![Server monitoring and section navigation](docs/assets/server-monitor.png)
 
-**Automatic discovery**: check paths and ports on connect, choose among instances and preserve existing tunnels.
+**Connection diagnostics:** inspect SSH/Python, existing Codex files, the remote bridge, provider model listing and local tunnels without installing, restarting or issuing inference requests. A reachable model list does not prove inference compatibility.
 
-![Connection discovery](docs/assets/connection-discovery.png)
+![Connection diagnostics with a fictional failure](docs/assets/connection-diagnostics.png)
+
+**GPU trends:** open the compact Trends button on any GPU card for an independent panel with utilization, memory and temperature, GPU selection, 5 / 30 minute ranges, sampled average / maximum / minimum and pointer, touch or keyboard inspection of actual samples.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/gpu-trends-dark.png">
+  <img src="docs/assets/gpu-trends-light.png" alt="GPU trends panel with area chart and sampled statistics" width="100%">
+</picture>
+
+The Python service samples the configured server about every 5 seconds while the app runs, even on another page, minimized or with a throttled browser. History is in memory for the latest 30 minutes, at most 360 samples. Network outages, computer sleep and app shutdown leave gaps; missing data is never fabricated. Opening more pages does not create more samplers.
+
+**Process exit alerts:** star a process to check its PID start identity and server boot identity about every 10 seconds. Two confirmations are required; disconnection and unreadable identities are not exits. An exit does not imply task success. Alerts require the running management service; OS notifications require permission. Watches and history do not survive restarts. Creation time is for the current PID, not a shell history entry.
+
+**Remote files:** browse directories accessible to the SSH account, with file-type icons and up to 200 entries per page. Stream individual files with SHA256 verification; no extra remote service is needed. Uploads never overwrite existing files. Download, verify, then select Save locally. Supported browsers stream through the native save dialog; fallback saves are limited to 256 MiB. Uploads are limited to 100 GiB per file, four concurrent transfers. No recursive directories, resume or symlink downloads. Failed uploads remove temporary files; local staging expires after an hour while running, with expired leftovers cleaned at the next launch. Keep the app running during transfers.
+
+![Remote file types and transfers](docs/assets/remote-files.png)
 
 **Choose the models you need:** fetch, search, and select multiple models, then choose a single model when testing.
 
@@ -111,10 +130,11 @@ On Windows, download `LinX-Remote-<version>-windows.zip`, fully extract it, open
 ```bash
 git clone https://github.com/LinX-Wang/linx-remote-manager.git
 cd linx-remote-manager
+python -m pip install -r requirements.txt
 python launch.pyw
 ```
 
-On macOS, use `python3` instead of `python` if needed. Runtime code uses only the Python standard library; no `pip install` is needed.
+On macOS, use `python3` instead of `python` if needed. Install requirements.txt before running from source; the Windows EXE includes runtime dependencies.
 
 ### 2. Choose a server
 
@@ -200,7 +220,7 @@ GitHub Actions provides cross-platform checks and manual or tag-triggered packag
 
 <div align="center"><sub>Made by LinX · Keep your remote workspace connected.</sub></div>
 
-## New in 1.8.6
+## Interface and packaging
 
 - Offline Inter, complete Noto Sans SC and JetBrains Mono fonts, including OFL licenses and the LinX maker mark.
 - Full-width responsive content, larger text, semantic metric colors and a reserved navigation lane.
