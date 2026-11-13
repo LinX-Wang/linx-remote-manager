@@ -13,6 +13,21 @@ import web_app
 
 
 class ServerMonitor(unittest.TestCase):
+    def test_real_collector_initialization_cache_and_watch_changes(self):
+        from types import SimpleNamespace
+        collector=server_monitor.Monitor()
+        settings=dict(manager.DEFAULT,host='server.example',user='me')
+        raw=b'__PS__\nother 12 20 1 python worker.py\nme 13 10 2 python own.py\n__TIMING__\n{"processes":{"12":{"started_at":1700000000,"elapsed_seconds":5,"start_ticks":"100"}}}'
+        with patch.object(manager,'ssh_base',return_value=(['ssh'],'demo')), \
+             patch.object(manager,'ssh_run',return_value=SimpleNamespace(returncode=0,stdout=raw,stderr=b'')) as ssh, \
+             patch('monitor_features.features.watched_map',return_value={'12':'100'}) as watched:
+            result=collector.collect(settings,force=True)
+            self.assertFalse(result['error'])
+            self.assertEqual(result['processes'][0]['pid'],12)
+            watched.return_value={}
+            self.assertEqual(collector.collect(settings)['processes'][0]['pid'],13)
+            self.assertEqual(ssh.call_count,1)
+
     def test_watched_processes_move_first_without_breaking_current_user_priority(self):
         rows=[dict(pid=1,user='worker',start_ticks='10',cpu=80),
               dict(pid=2,user='me',start_ticks='20',cpu=2),

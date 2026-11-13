@@ -191,13 +191,6 @@ def parse_snapshot(raw: str) -> dict[str, Any]:
     top = sorted(processes.values(), key=lambda p: float(p.get("cpu", 0)), reverse=True)[:300]
     return {"gpus": gpus, "memory": memory, "load": load, "cpu_cores": cpu_cores, "disks": disks, "processes": top, "collected_at": int(time.time())}
 
-class Monitor:
-    def __init__(self):
-        self.lock = threading.Lock()
-        self.cache: dict[str, Any] | None = None
-        self.cache_key = None
-        self.cache_time = 0.0
-
 def prioritize_processes(rows, user, watched, limit=100):
     identities={(str(row.get('pid')),str(row.get('start_ticks',''))):row for row in rows}
     pinned=[identities[(pid,ticks)] for pid,ticks in watched.items() if (pid,ticks) in identities]
@@ -210,6 +203,12 @@ def prioritize_processes(rows, user, watched, limit=100):
 
 
 class Monitor:
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.cache: dict[str, Any] | None = None
+        self.cache_key = None
+        self.cache_time = 0.0
+
     def _prioritized(self,data,settings):
         from monitor_features import features
         result=dict(data)
@@ -239,9 +238,8 @@ class Monitor:
                 rows = data.get("processes", [])
                 data["processes"] = rows
                 data.update({"connection": {"profile": destination, "host": settings.get("host") or destination, "user": settings.get("user", ""), "port": settings.get("port", 22)}, "current_user": settings.get("user", ""), "stale": False, "error": ""})
-                data=self._prioritized(data,settings)
                 self.cache, self.cache_key, self.cache_time = data, key, time.monotonic()
-                return dict(data)
+                return self._prioritized(data,settings)
             except Exception as exc:
                 if self.cache is not None and self.cache_key == key:
                     stale = self._prioritized(self.cache,settings); stale.update(stale=True, error=str(exc)[:1000]); return stale
