@@ -198,6 +198,24 @@ class Monitor:
         self.cache_key = None
         self.cache_time = 0.0
 
+def prioritize_processes(rows, user, watched, limit=100):
+    identities={(str(row.get('pid')),str(row.get('start_ticks',''))):row for row in rows}
+    pinned=[identities[(pid,ticks)] for pid,ticks in watched.items() if (pid,ticks) in identities]
+    pinned_ids={str(row.get('pid')) for row in pinned}
+    remaining=[row for row in rows if str(row.get('pid')) not in pinned_ids]
+    mine=[row for row in remaining if row.get('user')==user]
+    others=[row for row in remaining if row.get('user')!=user]
+    capacity=max(0,limit-len(pinned))
+    return pinned+mine[:capacity]+others[:max(0,capacity-len(mine[:capacity]))]
+
+
+class Monitor:
+    def _prioritized(self,data,settings):
+        from monitor_features import features
+        result=dict(data)
+        result['processes']=prioritize_processes(data.get('processes',[]),settings.get('user',''),features.watched_map(settings))
+        return result
+
     def collect(self, settings: dict[str, Any], force: bool = False) -> dict[str, Any]:
         import manager
         ssh, destination = manager.ssh_base(settings)
@@ -205,7 +223,7 @@ class Monitor:
         key = (destination, settings.get("user", ""), settings.get("port"), identity, settings.get('home', ''))
         with self.lock:
             if self.cache is not None and self.cache_key == key and not force and time.monotonic() - self.cache_time < 4:
-                return dict(self.cache)
+                return self._prioritized(self.cache,settings)
             try:
                 # Pass bytes so Windows does not translate LF to CRLF before SSH
                 # forwards the script to POSIX sh (CR characters break shell syntax).
@@ -219,15 +237,14 @@ class Monitor:
                 data = parse_snapshot(result.stdout.decode("utf-8", errors="replace"))
                 user = settings.get("user", "")
                 rows = data.get("processes", [])
-                mine = [row for row in rows if row.get("user") == user]
-                others = [row for row in rows if row.get("user") != user]
-                data["processes"] = mine[:100] + others[:max(0, 100 - len(mine[:100]))]
+                data["processes"] = rows
                 data.update({"connection": {"profile": destination, "host": settings.get("host") or destination, "user": settings.get("user", ""), "port": settings.get("port", 22)}, "current_user": settings.get("user", ""), "stale": False, "error": ""})
+                data=self._prioritized(data,settings)
                 self.cache, self.cache_key, self.cache_time = data, key, time.monotonic()
                 return dict(data)
             except Exception as exc:
                 if self.cache is not None and self.cache_key == key:
-                    stale = dict(self.cache); stale.update(stale=True, error=str(exc)[:1000]); return stale
+                    stale = self._prioritized(self.cache,settings); stale.update(stale=True, error=str(exc)[:1000]); return stale
                 return {"gpus": [], "memory": {}, "load": [], "cpu_cores": None, "disks": [], "processes": [], "collected_at": int(time.time()), "connection": {"profile": destination, "host": settings.get("host") or destination, "user": settings.get("user", ""), "port": settings.get("port", 22)}, "current_user": settings.get("user", ""), "stale": False, "error": str(exc)[:1000]}
 
 monitor = Monitor()

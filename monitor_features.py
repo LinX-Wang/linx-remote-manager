@@ -45,6 +45,11 @@ class Features:
         key=connection_key(settings)
         with self.lock:
             return dict(watches=[{k:v for k,v in w.items() if k not in ('connection','boot','misses')} for w in self.watches.values() if w['connection']==key],events=[dict(e) for e in self.events if e['connection']==key],enabled=bool(self.watches))
+    def watched_map(self,settings):
+        key=connection_key(settings)
+        with self.lock:
+            return {str(w['pid']):str(w['ticks']) for w in self.watches.values()
+                    if w['connection']==key and w['state'] not in ('exited','restarted')}
     def tick(self,settings):
         from remote_tools import request
         key=connection_key(settings)

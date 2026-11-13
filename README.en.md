@@ -49,7 +49,7 @@ This is **an independent third-party project by LinX**, not an official Cindy or
 | Server connection and state | Reuse Cindy's SSH configuration or connect manually; use section navigation to inspect GPU, system processes, disks, memory, and load, with GPU users and PIDs neatly arranged and common credentials redacted from process arguments |
 | Connection diagnostics | Read-only checks for SSH, the bridge, provider and local tunnels |
 | GPU trends | Background sampling about every 5 seconds, independent of the active page; interactive 5 / 30 minute charts |
-| Process timing and alerts | PID creation time, elapsed time and identity-aware exit alerts without controlling tasks |
+| Process timing and alerts | PID creation time, elapsed time, pin and highlight watched processes, and identity-aware exit alerts |
 | Remote files | File-type icons, streamed single-file transfers and SHA256 verification; uploads never overwrite |
 | Automatic discovery | Check Codex installations, server port availability and local Sub2API on connect, with manual overrides |
 | Per-user environment | Check gawk and the complete Codex installation; skip tools that already work |
@@ -64,7 +64,7 @@ This is **an independent third-party project by LinX**, not an official Cindy or
 
 ![Server tools and inline update progress](docs/assets/connection-updates.png)
 
-**Server monitoring:** use the section rail to move between GPU, system processes, and disk space. It scrolls horizontally on narrow screens, and GPU users and PIDs line up clearly.
+**Server monitoring:** use the section rail to move between GPU, system processes, and disk space. It scrolls horizontally on narrow screens, and GPU users and PIDs line up clearly. Watched processes move to the top of the system list with a subtle full-row highlight; unwatching restores the normal order.
 
 ![Server monitoring and section navigation](docs/assets/server-monitor.png)
 

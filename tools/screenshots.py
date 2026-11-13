@@ -179,9 +179,12 @@ def main():
         page.keyboard.press('Escape')
         assert page.locator('#tools-trend-host').count()==0
         page.evaluate("applyAppearance('light')")
-        page.locator('[data-watch-pid="240186"]').first.click()
+        page.locator('[data-watch-pid="240598"]').first.click()
         page.wait_for_function('Tools.watches.length === 1')
-        assert page.locator('[data-watch-pid="240186"]').first.get_attribute('aria-pressed') == 'true'
+        assert page.locator('[data-watch-pid="240598"]').first.get_attribute('aria-pressed') == 'true'
+        assert page.locator('#monitor-processes tbody tr').first.locator('td').nth(1).inner_text()=='240598'
+        assert 'watched' in page.locator('#monitor-processes tbody tr').first.get_attribute('class')
+        assert ''.join(page.locator('#monitor-processes tbody tr').first.locator('.watch-row-flag').inner_text().split())=='★关注中'
         page.locator('.watch-panel').evaluate('(e)=>e.open=true')
         page.evaluate('render()')
         assert page.locator('.watch-panel').evaluate('(e)=>e.open'), 'watch panel collapsed after page render'
@@ -206,6 +209,10 @@ def main():
         page.evaluate('Tools.alerts=[];renderWatchAlerts()')
         page.evaluate('render();clearToast()')
         page.screenshot(path=str(assets/'server-monitor.png'), full_page=True, animations='disabled')
+        page.locator('[data-watch-remove]').click()
+        page.wait_for_function('Tools.watches.length === 0')
+        assert page.locator('#monitor-processes tbody tr').first.locator('td').nth(1).inner_text()=='240186'
+        assert page.locator('.monitor-process-row.watched').count()==0
         page.locator('.section-rail button').nth(1).click()
         page.wait_for_timeout(250)
         assert page.locator('#monitor-processes h2').is_visible()
@@ -256,7 +263,7 @@ def main():
         assert 'list' not in calls and 'updates_check' not in calls
         assert not errors, errors
         browser.close()
-    print('Ten fictional screenshots generated; persistent watch alert, panel state, sound toggle, trend dialog, file icons, 36 page layouts and isolated first-run behavior passed.')
+    print('Ten fictional screenshots generated; watched process ordering/highlighting, persistent alerts, panel state, sound toggle, trend dialog, file icons, 36 page layouts and isolated first-run behavior passed.')
 
 
 if __name__ == '__main__':

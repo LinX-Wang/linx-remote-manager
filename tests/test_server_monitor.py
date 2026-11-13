@@ -13,6 +13,17 @@ import web_app
 
 
 class ServerMonitor(unittest.TestCase):
+    def test_watched_processes_move_first_without_breaking_current_user_priority(self):
+        rows=[dict(pid=1,user='worker',start_ticks='10',cpu=80),
+              dict(pid=2,user='me',start_ticks='20',cpu=2),
+              dict(pid=3,user='worker',start_ticks='30',cpu=1)]
+        ordered=server_monitor.prioritize_processes(rows,'me',{'3':'30'})
+        self.assertEqual([row['pid'] for row in ordered],[3,2,1])
+        stale_watch=server_monitor.prioritize_processes(rows,'me',{'3':'old'})
+        self.assertEqual([row['pid'] for row in stale_watch],[2,1,3])
+        capped=server_monitor.prioritize_processes(rows,'me',{'3':'30'},limit=2)
+        self.assertEqual([row['pid'] for row in capped],[3,2])
+
     def test_process_timing_is_shared_by_gpu_and_system_and_not_local_clock(self):
         timing = dict(processes={'123':dict(started_at=1700000000, elapsed_seconds=7200, start_ticks='12000')})
         raw = '__GPU__\n0, Test, 10, 12, 100, 40\n__PMON__\n0 123 C 10 0 python\n__PS__\nws 123 1 2 python python train.py\n__TIMING__\n' + json.dumps(timing)

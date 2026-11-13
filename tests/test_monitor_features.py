@@ -75,3 +75,11 @@ class MonitorFeatures(unittest.TestCase):
     def test_wrong_identity_rejected(self):
         with patch('remote_tools.request',return_value=dict(boot_id='boot',processes={'12':dict(status='running',ticks='200')})):
             with self.assertRaises(ValueError):monitor_features.Features().add({},12,'100')
+
+    def test_watched_map_is_connection_scoped_and_excludes_terminal_processes(self):
+        f=monitor_features.Features();a={'host':'demo'};b={'host':'other'}
+        f.watches={'a':dict(id='a',connection=monitor_features.connection_key(a),pid=12,ticks='100',state='running'),
+                   'b':dict(id='b',connection=monitor_features.connection_key(a),pid=13,ticks='200',state='exited'),
+                   'c':dict(id='c',connection=monitor_features.connection_key(b),pid=14,ticks='300',state='running')}
+        self.assertEqual(f.watched_map(a),{'12':'100'})
+        self.assertEqual(f.watched_map(b),{'14':'300'})
