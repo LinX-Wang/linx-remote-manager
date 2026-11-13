@@ -59,6 +59,7 @@ def main():
     assets = ROOT/'docs/assets'
     assets.mkdir(parents=True, exist_ok=True)
     calls, errors = [], []
+    watch_events=[];watch_rows=[]
     empty = False
 
     def route(request):
@@ -92,11 +93,13 @@ def main():
                 now=int(time.time())
                 data=dict(samples=[dict(at=now-i*5,gpus=[dict(g,index=g['index'],utilization=max(0,min(100,g['utilization']+15*math.sin(i/4)+5*math.sin(i/9))),memory_used=g['memory_used']*(1+.04*math.sin(i/8)),temperature=g['temperature']+3*math.sin(i/10)) for g in MONITOR['gpus']]) for i in reversed(range(60)) if i not in range(31,36)])
             elif op == 'watch_status':
-                data=dict(watches=[],events=[],enabled=False)
+                data=dict(watches=watch_rows,events=watch_events,enabled=bool(watch_rows))
             elif op == 'watch_add':
-                data=dict(watches=[dict(id='demo-watch',pid=int(payload['pid']),ticks=payload['ticks'],user=payload['user'],state='running')],events=[])
+                watch_rows[:]=[dict(id='demo-watch',pid=int(payload['pid']),ticks=payload['ticks'],user=payload['user'],state='running')]
+                data=dict(watches=watch_rows,events=watch_events)
             elif op == 'watch_remove':
-                data=dict(watches=[],events=[])
+                watch_rows.clear()
+                data=dict(watches=watch_rows,events=watch_events)
             elif op == 'connection_diagnostics':
                 data=dict(checked_at=1792419000,rows=[dict(name='SSH / Python',status='ok',detail='只读检查通过'),dict(name='远端兼容桥',status='error',detail='演示故障：服务未响应')])
             elif op == 'files_list':
@@ -179,8 +182,28 @@ def main():
         page.locator('[data-watch-pid="240186"]').first.click()
         page.wait_for_function('Tools.watches.length === 1')
         assert page.locator('[data-watch-pid="240186"]').first.get_attribute('aria-pressed') == 'true'
-        page.locator('[data-watch-pid="240186"]').first.click()
-        page.wait_for_function('Tools.watches.length === 0')
+        page.locator('.watch-panel').evaluate('(e)=>e.open=true')
+        page.evaluate('render()')
+        assert page.locator('.watch-panel').evaluate('(e)=>e.open'), 'watch panel collapsed after page render'
+        assert page.locator('.watch-summary-icon').count()==1
+        assert page.locator('.watch-state[data-watch-state=running]').count()==1
+        page.evaluate("localStorage.setItem('linxWatchSound','true');render()")
+        assert page.locator('.watch-sound-toggle').get_attribute('aria-pressed')=='true'
+        page.evaluate("localStorage.setItem('linxWatchSound','false');render()")
+        assert page.locator('.watch-sound-toggle').get_attribute('aria-pressed')=='false'
+        page.evaluate("Tools.alerts=[{id:999,pid:240186,at:Date.now()/1000}];renderWatchAlerts()")
+        assert page.locator('.watch-alert').is_visible()
+        assert page.locator('#watch-alert-shortcut').is_visible()
+        assert '1' in page.locator('#watch-alert-shortcut').inner_text()
+        page.evaluate('render()')
+        assert page.locator('.watch-alert').is_visible(), 'alert did not persist across page render'
+        assert '1 条未读' in page.locator('.watch-panel summary').inner_text()
+        page.locator('#watch-alert-shortcut').click()
+        assert page.locator('.watch-panel').evaluate('(e)=>e.open'), 'notification shortcut did not reopen the watch panel'
+        page.locator('[data-dismiss-watch-alert]').click()
+        assert page.locator('.watch-alert').count()==0
+        assert page.locator('#watch-alert-shortcut').is_hidden()
+        page.evaluate('Tools.alerts=[];renderWatchAlerts()')
         page.evaluate('render();clearToast()')
         page.screenshot(path=str(assets/'server-monitor.png'), full_page=True, animations='disabled')
         page.locator('.section-rail button').nth(1).click()
@@ -233,7 +256,7 @@ def main():
         assert 'list' not in calls and 'updates_check' not in calls
         assert not errors, errors
         browser.close()
-    print('Ten fictional screenshots generated; trend dialog, file icons, 36 page layouts and isolated first-run behavior passed.')
+    print('Ten fictional screenshots generated; persistent watch alert, panel state, sound toggle, trend dialog, file icons, 36 page layouts and isolated first-run behavior passed.')
 
 
 if __name__ == '__main__':
