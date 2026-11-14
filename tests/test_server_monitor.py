@@ -13,6 +13,51 @@ import web_app
 
 
 class ServerMonitor(unittest.TestCase):
+    def test_cached_api_does_not_wait_for_sampling_or_ssh(self):
+        from concurrent.futures import ThreadPoolExecutor
+        from types import SimpleNamespace
+        collector=server_monitor.Monitor()
+        settings=dict(manager.DEFAULT,host='server.example',user='me')
+        raw=b'__GPU__\n0, Test GPU, 12, 1, 100, 40\n__PS__\nme 42 1 2 python job.py'
+        with patch.object(manager,'ssh_base',return_value=(['ssh'],'demo')), patch.object(manager,'ssh_run',return_value=SimpleNamespace(returncode=0,stdout=raw,stderr=b'')) as ssh:
+            initial=collector.collect(settings,force=True)
+            collector.cache_time-=10
+            with ThreadPoolExecutor() as pool:
+                collector.lock.acquire()
+                try:
+                    with patch.object(manager,'read_settings',return_value=settings),patch.object(server_monitor,'monitor',collector):
+                        result=pool.submit(web_app.operation,{'op':'monitor_status'}).result(timeout=1)
+                finally:
+                    collector.lock.release()
+            self.assertEqual(ssh.call_count,1)
+            self.assertEqual(result['collected_at'],initial['collected_at'])
+            self.assertEqual(result['gpus'][0]['name'],'Test GPU')
+            self.assertTrue(result['refreshing'])
+            self.assertFalse(result['stale'])
+            self.assertIsNone(collector.cached(dict(settings,user='someone-else')))
+            collector.cache_time-=10
+            self.assertTrue(collector.cached(settings)['stale'])
+
+    def test_concurrent_refreshes_share_the_inflight_sample(self):
+        from concurrent.futures import ThreadPoolExecutor
+        from types import SimpleNamespace
+        import threading,time
+        entered=threading.Event();release=threading.Event();second_started=threading.Event()
+        collector=server_monitor.Monitor();settings=dict(manager.DEFAULT,host='server.example')
+        def ssh_run(*args,**kwargs):
+            entered.set();self.assertTrue(release.wait(3))
+            return SimpleNamespace(returncode=0,stdout=b'__PS__\nme 42 1 2 python job.py',stderr=b'')
+        def second():
+            second_started.set();return collector.collect(settings,force=True)
+        with patch.object(manager,'ssh_base',return_value=(['ssh'],'demo')),patch.object(manager,'ssh_run',side_effect=ssh_run) as ssh,ThreadPoolExecutor() as pool:
+            first=pool.submit(collector.collect,settings,True)
+            try:
+                self.assertTrue(entered.wait(2));another=pool.submit(second)
+                self.assertTrue(second_started.wait(2));time.sleep(.02)
+            finally:release.set()
+            self.assertEqual(first.result(timeout=3)['collected_at'],another.result(timeout=3)['collected_at'])
+            self.assertEqual(ssh.call_count,1)
+
     def test_real_collector_initialization_cache_and_watch_changes(self):
         from types import SimpleNamespace
         collector=server_monitor.Monitor()

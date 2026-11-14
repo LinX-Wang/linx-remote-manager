@@ -60,11 +60,21 @@ This is **an independent third-party project by LinX**, not an official Cindy or
 
 ### Interface preview
 
+**Version 1.10.0:** separate connection and environment pages, a four-column provider grid on wide windows, a redesigned local tunnel page, and an internally scrolling remote-file workspace.
+
 **Server connection, state, and updates:** reuse Cindy's SSH configuration and prepare tools in the actual login account's home directory. After connecting, inspect GPU, system processes, and disk usage on the same page; update progress stays next to its action button.
 
-![Server tools and inline update progress](docs/assets/connection-updates.png)
+Connection settings and environment maintenance have separate pages. Switching pages preserves ongoing maintenance progress.
 
-**Server monitoring:** use the section rail to move between GPU, system processes, and disk space. It scrolls horizontally on narrow screens, and GPU users and PIDs line up clearly. Watched processes move to the top of the system list with a subtle full-row highlight; unwatching restores the normal order.
+![Server connection](docs/assets/connection-updates.png)
+
+![Environment and updates](docs/assets/environment-updates.png)
+
+**Providers and local tunnels:** wide windows show four naturally sized provider cards per row, with selected models and configured context lengths below. Context values are saved settings, not an upstream capability test. The local Sub2API page shows both endpoints and the SSH mapping; connection health requires an actual check.
+
+![Local Sub2API tunnel](docs/assets/sub2api-tunnel.png)
+
+**Server monitoring:** show an existing background snapshot immediately without waiting for SSH collection. Original sample times and stale indicators remain visible; manual refresh still collects real data. use the section rail to move between GPU, system processes, and disk space. It scrolls horizontally on narrow screens, and GPU users and PIDs line up clearly. Watched processes move to the top of the system list with a subtle full-row highlight; unwatching restores the normal order.
 
 ![Server monitoring and section navigation](docs/assets/server-monitor.png)
 
@@ -83,7 +93,7 @@ The Python service samples the configured server about every 5 seconds while the
 
 **Process exit alerts:** star a process to check its PID start identity and server boot identity about every 10 seconds. Two confirmations are required; disconnection and unreadable identities are not exits. An exit does not imply task success. A fixed lower-right alert remains until dismissed, and a header counter shows unread alerts. Optional sound is off by default and can be enabled in the watch panel; OS notifications are a secondary channel. Alerts are held for the current run; recreate watches after restart. Creation time is for the current PID, not a shell history entry.
 
-**Remote files:** browse directories accessible to the SSH account, with file-type icons and up to 200 entries per page. Stream individual files with SHA256 verification; no extra remote service is needed. Uploads never overwrite existing files. Download, verify, then select Save locally. Supported browsers stream through the native save dialog; fallback saves are limited to 256 MiB. Uploads are limited to 100 GiB per file, four concurrent transfers. No recursive directories, resume or symlink downloads. Failed uploads remove temporary files; local staging expires after an hour while running, with expired leftovers cleaned at the next launch. Keep the app running during transfers.
+**Remote files:** a single-screen workspace keeps path controls, table headers and pagination visible while file rows and transfer records scroll independently. Refreshing the same directory preserves its scroll position. browse directories accessible to the SSH account, with file-type icons and up to 200 entries per page. Stream individual files with SHA256 verification; no extra remote service is needed. Uploads never overwrite existing files. Download, verify, then select Save locally. Supported browsers stream through the native save dialog; fallback saves are limited to 256 MiB. Uploads are limited to 100 GiB per file, four concurrent transfers. No recursive directories, resume or symlink downloads. Failed uploads remove temporary files; local staging expires after an hour while running, with expired leftovers cleaned at the next launch. Keep the app running during transfers.
 
 ![Remote file types and transfers](docs/assets/remote-files.png)
 

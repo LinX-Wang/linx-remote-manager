@@ -17,6 +17,13 @@ class Features:
         if data.get('error') or data.get('stale') or not data.get('collected_at'):return
         key=connection_key(settings);now=int(data['collected_at'])
         with self.lock:
+            for watch in self.watches.values():
+                if watch['connection']!=key or watch['state'] in ('exited','restarted'):continue
+                matches=[(g,p) for g in data.get('gpus',[]) for p in g.get('processes',[])
+                         if p.get('pid')==watch['pid'] and str(p.get('start_ticks',''))==watch['ticks']]
+                if matches:
+                    watch['gpus']=[dict(index=g['index'],name=str(g.get('name',''))[:120]) for g,p in matches]
+                    watch['user']=str(matches[0][1].get('user') or watch['user'])[:64]
             if key not in self.histories:
                 if len(self.histories)>=8:del self.histories[next(iter(self.histories))]
                 self.histories[key]=deque(maxlen=360)
@@ -26,7 +33,7 @@ class Features:
             while history and now-history[0]['at']>1800:history.popleft()
     def history(self,settings):
         with self.lock:return dict(samples=list(self.histories.get(connection_key(settings),[])),interval=5,retention_minutes=30)
-    def add(self,settings,pid,ticks,user=''):
+    def add(self,settings,pid,ticks,user='',gpus=None):
         from remote_tools import request
         pid=int(pid)
         if pid<=0 or not str(ticks).isdigit():raise ValueError('进程身份无效，请刷新监控')
@@ -35,7 +42,9 @@ class Features:
         key=connection_key(settings)+':'+str(pid)+':'+ticks
         with self.lock:
             if len(self.watches)>=32 and key not in self.watches:raise ValueError('最多同时关注 32 个进程')
-            self.watches[key]=dict(id=key,connection=connection_key(settings),pid=pid,ticks=ticks,boot=probe['boot_id'],user=str(user)[:64],state='running',misses=0,created_at=int(time.time()))
+            cards=[dict(index=g['index'],name=str(g.get('name',''))[:120]) for g in (gpus or [])[:32]
+                   if isinstance(g,dict) and type(g.get('index')) is int and 0<=g['index']<1024]
+            self.watches[key]=dict(id=key,connection=connection_key(settings),pid=pid,ticks=ticks,boot=probe['boot_id'],user=str(user)[:64],gpus=cards,state='running',misses=0,created_at=int(time.time()))
         return self.status(settings)
     def remove(self,key):
         with self.lock:
@@ -78,7 +87,7 @@ class Features:
                     if w['misses']<2:continue
                     w['state']='exited';message='关注的进程 PID '+str(w['pid'])+' 已退出；任务是否成功需查看其结果'
                 self.sequence+=1
-                self.events.append(dict(id=self.sequence,watch_id=w['id'],connection=key,pid=w['pid'],message=message,at=int(time.time())))
+                self.events.append(dict(id=self.sequence,watch_id=w['id'],connection=key,pid=w['pid'],user=w.get('user',''),gpus=w.get('gpus',[]),state=w['state'],message=message,at=int(time.time())))
     def loop(self,stop):
         import manager
         import server_monitor

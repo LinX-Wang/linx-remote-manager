@@ -205,9 +205,27 @@ def prioritize_processes(rows, user, watched, limit=100):
 class Monitor:
     def __init__(self):
         self.lock = threading.Lock()
+        self.cache_lock = threading.Lock()
         self.cache: dict[str, Any] | None = None
         self.cache_key = None
         self.cache_time = 0.0
+
+    @staticmethod
+    def _key(settings):
+        return tuple(settings.get(k) for k in ('connection_source','cindy_host','host','alias','user','port','identity','home','auth_method'))
+
+    def cached(self, settings):
+        """Return a truthful last sample without waiting for network collection."""
+        with self.cache_lock:
+            if self.cache is None or self.cache_key != self._key(settings):
+                return None
+            data = self.cache
+            age = max(0, time.monotonic() - self.cache_time)
+        result = self._prioritized(data, settings)
+        result.update(snapshot_age_seconds=round(age, 2), refreshing=self.lock.locked())
+        if age > 15:
+            result['stale'] = True
+        return result
 
     def _prioritized(self,data,settings):
         from monitor_features import features
@@ -217,12 +235,18 @@ class Monitor:
 
     def collect(self, settings: dict[str, Any], force: bool = False) -> dict[str, Any]:
         import manager
-        ssh, destination = manager.ssh_base(settings)
-        identity = settings.get("identity", "") if settings.get("host") else settings.get("alias", "")
-        key = (destination, settings.get("user", ""), settings.get("port"), identity, settings.get('home', ''))
+        requested = time.monotonic()
+        key = self._key(settings)
+        cached = self.cached(settings)
+        if cached is not None and not force and cached['snapshot_age_seconds'] < 4:
+            return cached
         with self.lock:
-            if self.cache is not None and self.cache_key == key and not force and time.monotonic() - self.cache_time < 4:
-                return self._prioritized(self.cache,settings)
+            # A concurrent caller reuses the sample completed while it waited.
+            with self.cache_lock:
+                reuse = self.cache is not None and self.cache_key == key and (self.cache_time >= requested or not force and time.monotonic() - self.cache_time < 4)
+            if reuse:
+                return self.cached(settings)
+            ssh, destination = manager.ssh_base(settings)
             try:
                 # Pass bytes so Windows does not translate LF to CRLF before SSH
                 # forwards the script to POSIX sh (CR characters break shell syntax).
@@ -238,7 +262,8 @@ class Monitor:
                 rows = data.get("processes", [])
                 data["processes"] = rows
                 data.update({"connection": {"profile": destination, "host": settings.get("host") or destination, "user": settings.get("user", ""), "port": settings.get("port", 22)}, "current_user": settings.get("user", ""), "stale": False, "error": ""})
-                self.cache, self.cache_key, self.cache_time = data, key, time.monotonic()
+                with self.cache_lock:
+                    self.cache, self.cache_key, self.cache_time = data, key, time.monotonic()
                 return self._prioritized(data,settings)
             except Exception as exc:
                 if self.cache is not None and self.cache_key == key:

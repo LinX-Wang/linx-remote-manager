@@ -371,18 +371,23 @@ def operation(data):
     if op == 'window_reopen':
         REOPEN += 1
         return {'reopen':REOPEN}
-    if op == 'bootstrap': return {'settings':s, 'tunnel':core.tunnel_status(s), 'platform':sys.platform,'environment':core.environment_status(),'cindy_connections':core.cindy_connections()}
+    if op == 'bootstrap':
+        import server_monitor
+        return {'settings':s, 'tunnel':core.tunnel_status(s), 'platform':sys.platform,'environment':core.environment_status(),'cindy_connections':core.cindy_connections(),'monitor':server_monitor.monitor.cached(s)}
     if op == 'cindy_connections': return core.cindy_connections()
     if op == 'monitor_status':
         import server_monitor
         from monitor_features import features
-        result=server_monitor.monitor.collect(s, force=bool(data.get('force')))
+        force=bool(data.get('force'))
+        result=None if force else server_monitor.monitor.cached(s)
+        if result is None:
+            result=server_monitor.monitor.collect(s, force=force)
         features.record(s,result)
         return result
     if op in ('monitor_history','watch_status','watch_add','watch_remove'):
         from monitor_features import features
         if op=='monitor_history':return features.history(s)
-        if op=='watch_add':return features.add(s,data.get('pid'),str(data.get('ticks','')),data.get('user',''))
+        if op=='watch_add':return features.add(s,data.get('pid'),str(data.get('ticks','')),data.get('user',''),data.get('gpus') if isinstance(data.get('gpus'),list) else [])
         if op=='watch_remove':features.remove(data.get('id'))
         return features.status(s)
     if op=='connection_diagnostics':

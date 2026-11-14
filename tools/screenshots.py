@@ -19,6 +19,7 @@ PROFILES = [
     dict(id='demo-tunnel', name='本机 Sub2API', mode='tunnel', base_url='http://127.0.0.1:18765/v1',
          model=MODELS[0], selected_models=MODELS[:3], has_key=True, context_window=262144, context_windows={m:262144 for m in MODELS[:3]}),
 ]
+PROFILES += [dict(PROFILES[0], id='demo-research', name='Research API'), dict(PROFILES[0], id='demo-backup', name='Backup Relay')]
 UPDATES = dict(state='done', items=[
     dict(name='Codex', installed='codex-cli 0.159.2', available='0.163.0', update=True),
     dict(name='gawk', installed='GNU Awk 5.3.1', available='5.3.1', update=False),
@@ -123,7 +124,7 @@ def main():
 
     with sync_playwright() as pw:
         browser = pw.chromium.launch(**({'channel':args.channel} if args.channel else {}))
-        page = browser.new_page(viewport={'width':1440, 'height':1100}, device_scale_factor=1)
+        page = browser.new_page(viewport={'width':1920, 'height':1080}, device_scale_factor=1)
         page.route('**/*', route)
         page.on('pageerror', lambda e: errors.append(str(e)))
         page.goto('https://linx.test/')
@@ -138,8 +139,47 @@ def main():
             page.wait_for_timeout(400)
             page.screenshot(path=str(assets/('overview-'+mode+'.png')), full_page=True, animations='disabled')
         page.evaluate("appearanceMode='light';applyAppearance('light');S.page='connection';render()")
-        page.evaluate("S.environment={tool:'Codex',state:'running',events:[{phase:'download',transfer:true,message:'演示：正在传输已校验的官方包',downloaded_bytes:96*1048576,total_bytes:160*1048576}]};renderEnvironment()")
+        for width, height in ((1366,768),(1920,1080)):
+            page.set_viewport_size({'width':width,'height':height})
+            page.evaluate("S.page='providers';render();clearToast()")
+            bottom=page.locator('.cardfooter').last.bounding_box()
+            if width >= 1920:
+                assert bottom['y']+bottom['height']<=height,('providers not within one screen',width,height,bottom)
+            else:
+                assert len({round(c.bounding_box()['y']) for c in page.locator('.card').all()}) == 2
+            page.evaluate("S.page='connection';render()")
+            button=page.locator('#savesettings').bounding_box()
+            assert button['y']+button['height']<=height,('connection not within one screen',width,height,button)
+        page.set_viewport_size({'width':1920,'height':1080})
+        page.evaluate("window.savedTestProfiles=S.profiles;S.page='providers';render()")
+        page.set_viewport_size({'width':1920,'height':1080})
+        assert page.locator('.card').count()==4
+        assert page.locator('.provider-pager').count()==0
+        boxes=page.locator('.card').all()
+        assert len({round(x.bounding_box()['y']) for x in boxes})==1
+        assert max(x.bounding_box()['height'] for x in boxes)<500
+        page.set_viewport_size({'width':1920,'height':1080})
+        page.evaluate("S.profiles=window.savedTestProfiles;S.page='connection';render()")
+        page.locator('.connection-discovery>summary').click()
+        assert page.locator('#detect-connection').is_visible()
+        page.locator('.connection-discovery>summary').click()
+        assert page.locator('#detect-connection').is_hidden()
+        assert page.locator('#savesettings').is_visible()
+        assert page.locator('#environment-start').count() == 0
         page.screenshot(path=str(assets/'connection-updates.png'), full_page=True, animations='disabled')
+        page.locator('[data-page=environment]').click()
+        assert page.locator('#environment-start').is_visible()
+        assert page.locator('#savesettings').count() == 0
+        page.evaluate("S.environment={tool:'Codex',state:'running',events:[{phase:'download',transfer:true,message:'演示：正在传输已校验的官方包',downloaded_bytes:96*1048576,total_bytes:160*1048576}]};renderEnvironment()")
+        progress = page.locator('#environment-result').inner_text()
+        page.locator('[data-page=connection]').click()
+        page.locator('[data-page=environment]').click()
+        assert page.locator('#environment-result').inner_text() == progress
+        assert page.locator('#environment-start').is_visible()
+        page.screenshot(path=str(assets/'environment-updates.png'), full_page=True, animations='disabled')
+        page.evaluate("S.health=true;S.page='tunnel';render();clearToast()")
+        page.wait_for_timeout(400)
+        page.screenshot(path=str(assets/'sub2api-tunnel.png'), full_page=True, animations='disabled')
         page.evaluate('S.monitor=' + json.dumps(MONITOR, ensure_ascii=False) + ";S.page='monitor';render()")
         page.evaluate('pollTools()')
         page.wait_for_timeout(300)
@@ -194,8 +234,11 @@ def main():
         assert page.locator('.watch-sound-toggle').get_attribute('aria-pressed')=='true'
         page.evaluate("localStorage.setItem('linxWatchSound','false');render()")
         assert page.locator('.watch-sound-toggle').get_attribute('aria-pressed')=='false'
-        page.evaluate("Tools.alerts=[{id:999,pid:240186,at:Date.now()/1000}];renderWatchAlerts()")
+        page.evaluate("Tools.alerts=[{id:999,pid:240186,user:'demo-user',gpus:[{index:0,name:'NVIDIA RTX 3090'},{index:1,name:'NVIDIA RTX 3090'}],state:'exited',at:Date.now()/1000}];renderWatchAlerts()")
         assert page.locator('.watch-alert').is_visible()
+        assert page.locator('.exit-card-user').inner_text()=='demo-user'
+        assert 'GPU 0' in page.locator('.exit-card-gpus').inner_text()
+        assert 'GPU 1' in page.locator('.exit-card-gpus').inner_text()
         assert page.locator('#watch-alert-shortcut').is_visible()
         assert '1' in page.locator('#watch-alert-shortcut').inner_text()
         page.evaluate('render()')
@@ -245,7 +288,7 @@ def main():
         page.screenshot(path=str(assets/'mobile.png'), full_page=True, animations='disabled')
         for width in (320, 390, 768, 1024, 1440, 1920):
             page.set_viewport_size({'width':width, 'height':900})
-            for section in ('providers', 'connection', 'tunnel', 'help', 'monitor', 'files'):
+            for section in ('providers', 'connection', 'environment', 'tunnel', 'help', 'monitor', 'files'):
                 page.evaluate('(p)=>{S.page=p;render()}', section)
                 assert page.evaluate('document.documentElement.scrollWidth <= innerWidth+1'), (width, section)
                 if width > 640 and page.locator('.section-rail').count():
@@ -263,7 +306,7 @@ def main():
         assert 'list' not in calls and 'updates_check' not in calls
         assert not errors, errors
         browser.close()
-    print('Ten fictional screenshots generated; watched process ordering/highlighting, persistent alerts, panel state, sound toggle, trend dialog, file icons, 36 page layouts and isolated first-run behavior passed.')
+    print('Twelve fictional screenshots generated; separate connection/environment pages, retained progress, watched process ordering/highlighting, persistent alerts, panel state, sound toggle, trend dialog, file icons, 42 page layouts and isolated first-run behavior passed.')
 
 
 if __name__ == '__main__':

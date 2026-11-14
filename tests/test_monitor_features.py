@@ -76,6 +76,18 @@ class MonitorFeatures(unittest.TestCase):
         with patch('remote_tools.request',return_value=dict(boot_id='boot',processes={'12':dict(status='running',ticks='200')})):
             with self.assertRaises(ValueError):monitor_features.Features().add({},12,'100')
 
+    def test_exit_event_retains_user_and_all_last_observed_gpus(self):
+        f=monitor_features.Features();s={'host':'demo'}
+        with patch('remote_tools.request',return_value=dict(boot_id='boot',processes={'12':dict(status='running',ticks='100')})):
+            f.add(s,12,'100','lpj',[dict(index=0,name='RTX 3090')])
+        f.record(s,dict(collected_at=100,gpus=[dict(index=i,name='RTX 3090',processes=[dict(pid=12,start_ticks='100',user='lpj')]) for i in (1,2)]))
+        with patch('remote_tools.request',return_value=dict(boot_id='boot',processes={'12':dict(status='missing')})):
+            f.tick(s);f.tick(s)
+        event=f.status(s)['events'][0]
+        self.assertEqual(event['user'],'lpj')
+        self.assertEqual([g['index'] for g in event['gpus']],[1,2])
+        self.assertEqual(event['state'],'exited')
+
     def test_watched_map_is_connection_scoped_and_excludes_terminal_processes(self):
         f=monitor_features.Features();a={'host':'demo'};b={'host':'other'}
         f.watches={'a':dict(id='a',connection=monitor_features.connection_key(a),pid=12,ticks='100',state='running'),
